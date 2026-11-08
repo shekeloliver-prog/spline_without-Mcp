@@ -64,7 +64,8 @@ export const PLANETS = [
     name: 'Earth', tint: '#5a7896', map: 'earth', distance: 25, radius: 1, period: 1, day: 1, tilt: 23.4,
     facts: { Type: 'Rocky planet', Diameter: '12,756 km', 'From the Sun': '1 AU', Year: '365.25 days', Day: '23.9 hours', Gravity: '9.8 m/s²', 'Avg. temp.': '15 °C' },
     blurb: 'Home. The only world known to have life.',
-    moon: { radius: 0.27, distance: 2.2, period: 0.0748, color: '#bdbab4' },
+    // period: 27.3 days, slowed like every moon (see MOON_TIME_SLOW below)
+    moon: { radius: 0.27, distance: 2.2, period: (27.32 * 10) / 365.25, color: '#bdbab4' },
     satellite: { size: 0.22, distance: 1.55, period: 0.02 },
   },
   {
@@ -144,3 +145,107 @@ export const SANDBOX = {
   supernova: { speed: 450, vaporize: 21, boost: 260 }, // shock speed (units/yr), radius that vaporises, kick (units/yr)
   eclipseSeconds: 16,
 }
+
+// ---------------------------------------------------------------- moons
+// The major moons of every planet (Earth's Moon is handled separately as
+// MOON). Real values: mean diameter (km), distance from the planet's centre
+// (km), orbital period (days; negative = retrograde), inclination to the
+// planet's equator (degrees). Hundreds of tiny moons are left out: at this
+// scale they would be invisible specks.
+//
+// Shapes: 'cratered' uses the lunar map tinted, 'smooth' a plain tint
+// (hazy or icy worlds), 'rock' a roughened Spline Cube (small, irregular moons).
+const MOON_DATA = {
+  Mars: [
+    { name: 'Phobos', km: 22.4, distanceKm: 9376, days: 0.319, tint: '#6b5f55', shape: 'rock',
+      blurb: 'Slowly spiralling inward: in about 50 million years it will crash into Mars or break into a ring.' },
+    { name: 'Deimos', km: 12.4, distanceKm: 23460, days: 1.263, tint: '#857668', shape: 'rock',
+      blurb: 'The smaller, outer moon of Mars, smoothed by a thick layer of dust.' },
+  ],
+  Jupiter: [
+    { name: 'Io', km: 3643, distanceKm: 421700, days: 1.769, tint: '#e3cf62', shape: 'cratered',
+      blurb: 'The most volcanically active world in the solar system, squeezed by Jupiter’s tides.' },
+    { name: 'Europa', km: 3122, distanceKm: 671034, days: 3.551, tint: '#e2d6c2', shape: 'smooth',
+      blurb: 'An ice shell over a salty ocean: one of the best places to look for life.' },
+    { name: 'Ganymede', km: 5268, distanceKm: 1070412, days: 7.155, tint: '#9c9084', shape: 'cratered',
+      blurb: 'The largest moon in the solar system, bigger than Mercury, with its own magnetic field.' },
+    { name: 'Callisto', km: 4821, distanceKm: 1882709, days: 16.689, tint: '#6e655c', shape: 'cratered',
+      blurb: 'The most heavily cratered surface known: almost unchanged for 4 billion years.' },
+  ],
+  Saturn: [
+    { name: 'Mimas', km: 396, distanceKm: 185539, days: 0.942, tint: '#c9c7c3', shape: 'cratered',
+      blurb: 'One giant crater, Herschel, covers a third of its width.' },
+    { name: 'Enceladus', km: 504, distanceKm: 237948, days: 1.37, tint: '#f1f5f7', shape: 'smooth',
+      blurb: 'Geysers of water ice spray from its south pole, feeding Saturn’s E ring.' },
+    { name: 'Tethys', km: 1062, distanceKm: 294619, days: 1.888, tint: '#e0ddd8', shape: 'cratered',
+      blurb: 'Made almost entirely of water ice, with a canyon stretching three-quarters around it.' },
+    { name: 'Dione', km: 1123, distanceKm: 377396, days: 2.737, tint: '#cfccc6', shape: 'cratered',
+      blurb: 'Bright ice cliffs streak its trailing side.' },
+    { name: 'Rhea', km: 1527, distanceKm: 527108, days: 4.518, tint: '#bdbab4', shape: 'cratered',
+      blurb: 'Saturn’s second-largest moon: a cold, cratered ball of ice and rock.' },
+    { name: 'Titan', km: 5150, distanceKm: 1221870, days: 15.945, tint: '#d6a24a', shape: 'smooth',
+      blurb: 'The only moon with a thick atmosphere, and lakes of liquid methane on its surface.' },
+    { name: 'Iapetus', km: 1469, distanceKm: 3560820, days: 79.32, tint: '#a59d92', shape: 'cratered', incl: 15.5,
+      blurb: 'Two-toned: one hemisphere is as dark as coal, the other bright as snow.' },
+  ],
+  Uranus: [
+    { name: 'Miranda', km: 472, distanceKm: 129390, days: 1.413, tint: '#b5b0aa', shape: 'cratered',
+      blurb: 'A patchwork world with Verona Rupes, the tallest known cliff in the solar system.' },
+    { name: 'Ariel', km: 1158, distanceKm: 191020, days: 2.52, tint: '#c2bdb6', shape: 'cratered',
+      blurb: 'The brightest of Uranus’s large moons, with a young, rifted surface.' },
+    { name: 'Umbriel', km: 1169, distanceKm: 266000, days: 4.144, tint: '#6f6a66', shape: 'cratered',
+      blurb: 'The darkest of Uranus’s large moons.' },
+    { name: 'Titania', km: 1577, distanceKm: 435910, days: 8.706, tint: '#b8afa6', shape: 'cratered',
+      blurb: 'The largest moon of Uranus, cut by huge canyons.' },
+    { name: 'Oberon', km: 1523, distanceKm: 583520, days: 13.463, tint: '#a39a92', shape: 'cratered',
+      blurb: 'The outermost large moon of Uranus, old and heavily cratered.' },
+  ],
+  Neptune: [
+    { name: 'Proteus', km: 420, distanceKm: 117647, days: 1.122, tint: '#5f5a56', shape: 'rock',
+      blurb: 'About as big as a moon can be without gravity pulling it round.' },
+    { name: 'Triton', km: 2707, distanceKm: 354759, days: -5.877, tint: '#d8c6c0', shape: 'cratered', incl: 157,
+      blurb: 'Orbits backwards, so it was probably captured from the Kuiper belt. It has nitrogen geysers.' },
+  ],
+}
+
+// Moon orbits run this many times slower than real, and none faster than a
+// one-day orbit, so the inner moons don't strobe.
+export const MOON_TIME_SLOW = 10
+const EARTH_RADIUS_KM = 6371
+const km = (text) => Number(String(text).replace(/[^0-9.]/g, ''))
+const fmt = (n) => Math.round(n).toLocaleString('en-US')
+
+// Scene placement for each moon, derived from the real values:
+//   size: same scale as Earth's Moon (km / Earth radius), with a minimum so
+//         the smallest moons stay clickable;
+//   distance: compressed (square root of the real ratio) so every system
+//             fits between its neighbours' orbits.
+export const MOONS = PLANETS.flatMap((planet) =>
+  (MOON_DATA[planet.name] ?? []).map((m, i) => {
+    const planetKm = km(planet.facts.Diameter) / 2
+    const ratio = m.distanceKm / planetKm
+    const days = Math.abs(m.days)
+    return {
+      ...m,
+      planet: planet.name,
+      radius: Math.max(0.045, m.km / 2 / EARTH_RADIUS_KM),
+      distance: planet.radius * (1.4 + 0.5 * Math.sqrt(ratio)),
+      // A tilt over 90° already makes the orbit run backwards (Triton),
+      // so the period's sign only matters for low-tilt orbits.
+      period: (Math.max(days, 1) * MOON_TIME_SLOW * ((m.incl ?? 0) > 90 ? 1 : Math.sign(m.days))) / 365.25,
+      phase: (i * 2.39996 + planet.distance) % (Math.PI * 2),
+      short: `Moon of ${planet.name} · ${days < 2 ? `${(days * 24).toFixed(1)} h` : `${days.toFixed(1)} d`}`,
+      facts: {
+        Type: `Moon of ${planet.name}`,
+        Diameter: `${fmt(m.km)} km`,
+        [`From ${planet.name}`]: `${fmt(m.distanceKm)} km`,
+        Orbit: days < 2 ? `${(days * 24).toFixed(1)} hours` : `${days.toFixed(2)} days`,
+        ...(m.days < 0 ? { Direction: 'Backwards (retrograde)' } : {}),
+      },
+    }
+  }),
+)
+
+// Every selectable body: the fly-to bar (BODY_LIST) plus the other moons.
+export const ALL_BODIES = [...BODY_LIST, ...MOONS]
+export const moonsOf = (planetName) => MOONS.filter((m) => m.planet === planetName)

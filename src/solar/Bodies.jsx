@@ -2,11 +2,11 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
-import { useSim, useSplineGeometry, orbitAngle, SPIN_SCALE, now } from './sim.js'
+import { useSim, useSplineGeometry, orbitAngle, SPIN_SCALE, now, MOVE_PRIORITY } from './sim.js'
 import { glowTexture, rng, useMaps } from './textures.js'
 import { makeRock } from './rocks.js'
 import { patchSurface, atmosphereMaterial, tailMaterial, coronaTexture } from './shaders.js'
-import { SUN, MOON, ASTEROID_BELT, COMET, SPLINE_PATH_POINTS, SANDBOX } from './data.js'
+import { SUN, MOON, ASTEROID_BELT, COMET, SPLINE_PATH_POINTS, SANDBOX, moonsOf } from './data.js'
 import { accel, interact, shellRadius } from './physics.js'
 
 const DEG = Math.PI / 180
@@ -242,7 +242,7 @@ export function Planet({ planet, phase }) {
     }
     orbit.current.visible = body ? body.alive : true
     spin.current.rotation.y = (Math.PI * 2 * t * 365.25 * SPIN_SCALE) / planet.day
-  })
+  }, MOVE_PRIORITY)
 
   return (
     <group
@@ -256,6 +256,10 @@ export function Planet({ planet, phase }) {
           {planet.name === 'Earth' ? <EarthSurface scale={scale} /> : <PlanetSurface planet={planet} scale={scale} />}
         </group>
         {planet.ring && <Ring ring={planet.ring} />}
+        {/* Major moons orbit in the planet's equatorial plane, so they share its tilt */}
+        {moonsOf(planet.name).map((m) => (
+          <PlanetMoon key={m.name} moon={m} />
+        ))}
       </group>
       {planet.moon && <Moon moon={planet.moon} planetRadius={planet.radius} />}
       {planet.satellite && <Satellite satellite={planet.satellite} />}
@@ -292,6 +296,48 @@ function Ring({ ring }) {
   )
 }
 
+// A moon of Mars, Jupiter, Saturn, Uranus or Neptune. Clickable (fact card),
+// and the impactor can destroy it on its own.
+function PlanetMoon({ moon }) {
+  const { sphere, sphereRadius, cube } = useSplineGeometry()
+  const { moon: lunarMap } = useMaps('moon')
+  const sim = useSim()
+  const ref = useRef()
+  const handlers = useSelectable(moon.name)
+  const rock = useMemo(() => (moon.shape === 'rock' ? makeRock(cube, moon.name.length * 7 + 3) : null), [cube, moon])
+  const geometry = rock ?? sphere
+  const scale = moon.radius / (rock ? rock.boundingSphere.radius : sphereRadius)
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: moon.tint,
+        map: moon.shape === 'cratered' ? lunarMap : null,
+        roughness: moon.shape === 'smooth' ? 0.8 : 1,
+      }),
+    [moon, lunarMap],
+  )
+  useFrame(() => {
+    const a = orbitAngle(sim.time.current, moon.period, moon.phase)
+    ref.current.position.set(Math.cos(a) * moon.distance, 0, -Math.sin(a) * moon.distance)
+    ref.current.rotation.y = a + Math.PI // tidally locked
+    ref.current.visible = !sim.destroyedRef.current.has(moon.name)
+  }, MOVE_PRIORITY)
+  return (
+    <group rotation-x={((moon.incl ?? 0) * Math.PI) / 180}>
+      <mesh
+        ref={(o) => {
+          ref.current = o
+          sim.register(moon.name, o, moon.radius)
+        }}
+        geometry={geometry}
+        scale={scale}
+        material={material}
+        {...handlers}
+      />
+    </group>
+  )
+}
+
 function Moon({ moon, planetRadius }) {
   const { sphere, sphereRadius } = useSplineGeometry()
   const { moon: map } = useMaps('moon')
@@ -325,7 +371,7 @@ function Moon({ moon, planetRadius }) {
     // Earth's shadow (lunar eclipses) falls on the Moon, reddened by Earth's air.
     surface.uniforms.uOccluder.value.set(tmp.earth.x, tmp.earth.y, tmp.earth.z, planetRadius)
     surface.uniforms.uSunRadius.value = sim.star.current.phase === 'normal' ? SUN.radius : 1.1
-  })
+  }, MOVE_PRIORITY)
   return (
     <mesh
       ref={(o) => {
@@ -352,7 +398,7 @@ function Satellite({ satellite }) {
     const d = satellite.distance
     ref.current.position.set(Math.cos(a) * d, Math.sin(a) * d * 0.5, -Math.sin(a) * d * 0.85)
     ref.current.rotation.y = a
-  })
+  }, MOVE_PRIORITY)
   return (
     <group
       ref={(o) => {
@@ -585,7 +631,7 @@ export function Comet() {
     tmp.dust.copy(tmp.anti).multiplyScalar(0.7).addScaledVector(tmp.vel, -0.3).normalize()
     dustTail.current.quaternion.setFromUnitVectors(tmp.down, tmp.dust)
     dustTail.current.scale.set(len * 0.22, len * 0.75, len * 0.22)
-  })
+  }, MOVE_PRIORITY)
 
   const s = COMET.scale
   return (

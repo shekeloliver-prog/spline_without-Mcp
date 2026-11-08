@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { BODY_LIST, VIEWS } from './data.js'
+import { BODY_LIST, ALL_BODIES, VIEWS } from './data.js'
 
 const SPEEDS = [0.25, 0.5, 1, 2, 5, 10, 25, 50]
 
@@ -33,7 +33,7 @@ const TOOLS = [
   ['blackhole', 'Black hole', 'Swallows anything that falls in, and grows as it feeds.'],
   ['whitehole', 'White hole', 'The reverse of a black hole: it pushes everything away.'],
   ['wormhole', 'Wormhole', 'Two linked mouths. Whatever falls into one comes out of the other.'],
-  ['impactor', 'Impactor', 'Hurls a big asteroid at a planet or the Moon.'],
+  ['impactor', 'Impactor', 'Hurls a big asteroid at a planet or a moon.'],
 ]
 
 const EVENT_TEXT = {
@@ -48,7 +48,7 @@ const EVENT_TEXT = {
 }
 
 function toolHint(armed, pendingMouth) {
-  if (armed === 'impactor') return 'Click a planet or the Moon to hit it.'
+  if (armed === 'impactor') return 'Click a planet or any moon to hit it. Zoom in to reach the small moons.'
   if (armed === 'wormhole') return pendingMouth ? 'Now click where the second mouth goes.' : 'Click where the first mouth goes.'
   if (armed) return 'Click the orbital plane, or a planet, to place it.'
   return 'Pick a tool, then click in the scene. Esc cancels.'
@@ -146,7 +146,7 @@ export default function Hud(props) {
     paused, setPaused, speed, setSpeed,
     options, setOption, onReset, sandbox,
   } = props
-  const body = BODY_LIST.find((b) => b.name === selected)
+  const body = ALL_BODIES.find((b) => b.name === selected)
   const speedIndex = Math.max(0, SPEEDS.indexOf(speed))
   const startsOpen = useStartsOpen()
 

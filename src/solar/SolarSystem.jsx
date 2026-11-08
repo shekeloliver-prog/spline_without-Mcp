@@ -8,15 +8,17 @@ import { SimContext, useSim, now } from './sim.js'
 import { Sky, Sun, Planet, OrbitLine, AsteroidBelt, Comet } from './Bodies.jsx'
 import { ClickPlane, PhysicsStep, LensCapture, BlackHole, WhiteHole, Wormhole, Effects } from './Sandbox.jsx'
 import { createPhysics, resetPhysics, activate } from './physics.js'
-import { PLANETS, MOON, CAMERA_HOME, VIEWS, BODY_LIST, SECONDS_PER_YEAR, SANDBOX, SUN } from './data.js'
+import { PLANETS, MOON, MOONS, CAMERA_HOME, VIEWS, BODY_LIST, SECONDS_PER_YEAR, SANDBOX, SUN, moonsOf } from './data.js'
 import Hud from './Hud.jsx'
 import { Labels, LabelProjector } from './Labels.jsx'
 import './solar.css'
 
 // Starting angles, spread out so the planets don't line up on load.
 const PHASES = PLANETS.map((_, i) => (i * 2.39996) % (Math.PI * 2))
-const TINTS = Object.fromEntries([...PLANETS, MOON].map((b) => [b.name, b.tint]))
-const RADII = Object.fromEntries([...PLANETS, { name: 'Moon', radius: PLANETS[2].moon.radius }].map((b) => [b.name, b.radius]))
+const TINTS = Object.fromEntries([...PLANETS, MOON, ...MOONS].map((b) => [b.name, b.tint]))
+const RADII = Object.fromEntries(
+  [...PLANETS, { name: 'Moon', radius: PLANETS[2].moon.radius }, ...MOONS].map((b) => [b.name, b.radius]),
+)
 
 const DEFAULT_OPTIONS = {
   showLabels: true,
@@ -76,6 +78,8 @@ function eclipseCamera(type, earth, moonDistance, moonRadius, pos, target) {
   }
 }
 
+const UP = new THREE.Vector3(0, 1, 0)
+
 // Glides the camera to the selected body and keeps following it as it
 // orbits. With nothing selected, glides once to the current view preset.
 // During an eclipse it takes over and holds the eclipse viewpoint.
@@ -94,10 +98,14 @@ function CameraRig() {
       earth: new THREE.Vector3(),
       eventPos: new THREE.Vector3(),
       eventTarget: new THREE.Vector3(),
+      litDir: new THREE.Vector3(),
+      camDir: new THREE.Vector3(),
       following: null,
     }),
     [],
   )
+
+  if (import.meta.env.DEV) window.__solarCamera = camera // dev-only, for automated checks
 
   // Start framed for this screen shape (and reframe on resize while in a view).
   useLayoutEffect(() => {
@@ -148,8 +156,19 @@ function CameraRig() {
         const want = body.radius * 5 + 4
         const dist = camera.position.distanceTo(controls.target)
         const next = THREE.MathUtils.lerp(dist, want, k)
-        camera.position.sub(controls.target).setLength(next).add(controls.target)
-        if (Math.abs(next - want) < 0.05 && controls.target.distanceTo(v.target) < 0.05) {
+        // Swing round to the sunlit side (a three-quarter view, slightly
+        // from above), so we never arrive facing a body's black night side.
+        v.camDir.copy(camera.position).sub(controls.target).normalize()
+        let facing = 1
+        if (v.target.lengthSq() > 1) {
+          v.litDir.copy(v.target).negate().normalize().applyAxisAngle(UP, 0.6)
+          v.litDir.y += 0.35
+          v.litDir.normalize()
+          v.camDir.lerp(v.litDir, k).normalize()
+          facing = v.camDir.dot(v.litDir)
+        }
+        camera.position.copy(controls.target).addScaledVector(v.camDir, next)
+        if (Math.abs(next - want) < 0.05 && controls.target.distanceTo(v.target) < 0.05 && facing > 0.995) {
           sim.flying.current = false
           sim.lastSelected.current = selected // locked on: follow exactly from now on
         }
@@ -246,7 +265,9 @@ export default function SolarSystem() {
     (name, fate, where) => {
       const gone = new Set(destroyedRef.current)
       gone.add(name)
-      if (name === 'Earth') gone.add('Moon') // the Moon goes with Earth
+      // A planet's moons go with it.
+      if (name === 'Earth') gone.add('Moon')
+      for (const m of moonsOf(name)) gone.add(m.name)
       destroyedRef.current = gone
       setDestroyed(gone)
       const b = physics.current.bodies[name]
@@ -334,7 +355,8 @@ export default function SolarSystem() {
       if (!body || destroyedRef.current.has(name)) return
       const target = body.object.getWorldPosition(new THREE.Vector3())
       const dir = new THREE.Vector3(Math.random() - 0.5, 0.35 + Math.random() * 0.4, Math.random() - 0.5).normalize()
-      addEffect({ type: 'impactor', target: name, from: target.clone().addScaledVector(dir, 22 + RADII[name] * 8), radius: RADII[name] ?? 1 })
+      const radius = Math.max(RADII[name] ?? 1, 0.3) // keep the rock visible even when aimed at a tiny moon
+      addEffect({ type: 'impactor', target: name, from: target.clone().addScaledVector(dir, 22 + radius * 8), radius })
     },
     [addEffect],
   )
@@ -472,6 +494,11 @@ export default function SolarSystem() {
     }),
     [select, register, bodyClick, placeAt, smash, onFate, endEvent, armed, resetKey, options],
   )
+
+  // Dev-only handle for automated checks (stripped from production builds).
+  useEffect(() => {
+    if (import.meta.env.DEV) window.__solar = sim
+  }, [sim])
 
   const solarClass = ['solar', armed ? 'armed' : '', eventType ? 'in-event' : ''].join(' ')
 

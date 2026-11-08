@@ -49,8 +49,9 @@ sources and licenses are in `CREDITS.md`). The Spline view loads no images.
         ├── Bodies.jsx                   Sky, Sun, Planet (+EarthSurface, Ring, Moon, Satellite), OrbitLine, AsteroidBelt, Comet
         ├── Labels.jsx                   LABELS list, DOM labels + LabelProjector (positions, LOD, selected highlight)
         ├── Hud.jsx                      Overlay UI: play/pause, speed, Options (views, toggles, keys, reset), info card, fly-to bar
-        ├── data.js                      Tunables and facts: SUN, MOON, PLANETS, ASTEROID_BELT, COMET, VIEWS, BODY_LIST, labelDetail
-        ├── sim.js                       SimContext/useSim, useSplineGeometry, orbitAngle, SPIN_SCALE
+        ├── data.js                      Tunables and facts: SUN, MOON, PLANETS, MOONS (major moons), ASTEROID_BELT,
+        │                                COMET, VIEWS, BODY_LIST (fly-to bar), ALL_BODIES, labelDetail, SANDBOX
+        ├── sim.js                       SimContext/useSim, useSplineGeometry, orbitAngle, SPIN_SCALE, MOVE_PRIORITY, now
         ├── textureUrls.js               TEXTURES: key -> image URL (the one place image paths live)
         ├── textures.js                  useMaps(...keys) loader (colour space, anisotropy), glowTexture, rng
         ├── shaders.js                   patchSurface (eclipse shadows, night lights), atmosphere, comet tail,
@@ -115,7 +116,8 @@ returns its three geometries, plus their native sizes so they can be resized:
 │   │   │   └── <Planet>                 group on the orbit
 │   │   │       ├── group rotation-z = axial tilt
 │   │   │       │   ├── spin group       PlanetSurface (map) or EarthSurface (4 layers)
-│   │   │       │   └── <Ring>           Saturn only
+│   │   │       │   ├── <Ring>           Saturn only
+│   │   │       │   └── <PlanetMoon>×n   major moons, in the equatorial plane (+ own inclination)
 │   │   │       ├── <Moon>               Earth only
 │   │   │       └── <Satellite>          Earth only (the Cube)
 │   │   ├── <AsteroidBelt>               3 instancedMeshes of roughened Cube rocks; the whole belt turns
@@ -159,12 +161,57 @@ returns its three geometries, plus their native sizes so they can be resized:
 - Following a body happens in two steps each frame. First the target and
   camera move by the body's own displacement since the last frame. Then they
   ease across the remaining gap. The first step is what keeps fast bodies,
-  such as the Moon (one lap of Earth every 1.5 s at 1×), from drifting out of
+  such as Io (one lap of Jupiter in about 1 s at 1×), from drifting out of
   view.
 - Keyboard (window listener in `SolarSystem.jsx`):
   - <kbd>Space</kbd> pauses, unless focus is on a button or link.
   - <kbd>←</kbd> / <kbd>→</kbd> step through `BODY_LIST`.
   - <kbd>Esc</kbd> returns to the view.
+
+### Moons
+
+`MOONS` (data.js) lists the major moons of Mars, Jupiter, Saturn, Uranus
+and Neptune: 20 in all. Earth's Moon stays separate as `MOON`, with its
+eclipse logic. Each entry stores real values: diameter, distance, period
+(negative = retrograde) and inclination. Scene values are derived from them:
+- **Radius:** same scale as Earth's Moon (km ÷ Earth radius), at least
+  0.045 so tiny moons stay clickable.
+- **Distance:** `planetRadius × (1.4 + 0.5·√(realDistance / planetRadiusKm))`,
+  compressed so each system fits between its neighbours' orbits.
+- **Period:** `MOON_TIME_SLOW` (10×) slower than real, and never faster than
+  a one-day orbit. Earth's Moon uses the same rule (27.3 d → 15 s per lap at
+  1×).
+- **Inclination:** a tilt over 90° (Triton) already reverses the orbit, so
+  the period's sign is ignored then.
+
+`PlanetMoon` renders each moon inside its planet's tilt group, so moons
+orbit the equator. Uranus's moons therefore circle it on its side. Shapes:
+- `cratered`: the lunar map tinted;
+- `smooth`: a plain tint (Titan, Europa, Enceladus);
+- `rock`: a roughened Spline Cube (Phobos, Deimos, Proteus).
+
+Moons are not in the fly-to bar; only Earth's Moon is. Clicking a moon
+selects it and shows its fact card (`ALL_BODIES` in the HUD). The impactor
+can destroy any moon on its own. Destroying a planet also destroys its moons
+(`destroy` cascades via `moonsOf`). Moon labels are minor, so they only
+appear up close.
+
+### Frame order and the camera
+
+- Anything that moves a body runs its `useFrame` at `MOVE_PRIORITY` (−0.25).
+  The camera rig and the labels run at the default 0, so they read this
+  frame's positions. Keep moving code at `MOVE_PRIORITY` (never positive,
+  which would take over rendering). Without this, the rig chases where a
+  fast moon was a frame ago and loses it.
+- While flying to a body, the camera swings round to a three-quarter view
+  from the sunlit side, so it never arrives facing a black night side. It
+  only locks on once it's there.
+
+### Dev-only test hooks
+
+In `npm run dev` only (`import.meta.env.DEV`, stripped from builds),
+`window.__solar` is the sim context and `window.__solarCamera` the camera.
+Automated browser checks use them to select bodies and project positions.
 
 ### Scale and time
 

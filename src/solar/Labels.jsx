@@ -2,13 +2,14 @@ import { useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSim } from './sim.js'
-import { BODY_LIST, labelDetail } from './data.js'
+import { BODY_LIST, MOONS, labelDetail } from './data.js'
 
 // Everything that gets a label. `minor` labels (small objects next to a
 // planet) only appear once the camera is close, so the overview stays clean.
 const LABELS = [
   ...BODY_LIST.map((b) => ({ name: b.name, detail: labelDetail(b), minor: b.name === 'Moon' })),
   { name: 'Satellite', detail: 'Orbiting Earth', minor: true },
+  ...MOONS.map((m) => ({ name: m.name, detail: m.short, minor: true })),
   { name: 'Asteroid belt', detail: '2.2–3.2 AU · millions of rocks', belt: true },
 ]
 const MINOR_RANGE = 30 // scene units from the camera

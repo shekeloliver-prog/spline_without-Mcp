@@ -34,6 +34,12 @@ export function useSplineGeometry() {
 // eclipses) whatever the simulation speed.
 export const now = () => performance.now() / 1000
 
+// useFrame priority for anything that moves a body. Lower runs first, so
+// bodies have their new positions before the camera rig and labels (default
+// priority 0) read them. Must stay negative: a positive priority would take
+// over rendering. (Clock is -1, PhysicsStep -0.5.)
+export const MOVE_PRIORITY = -0.25
+
 // Orbit angle (radians) of a body at time t (Earth years).
 export const orbitAngle = (t, period, phase = 0) => phase + (Math.PI * 2 * t) / period
 
