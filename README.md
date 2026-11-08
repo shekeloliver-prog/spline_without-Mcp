@@ -27,3 +27,25 @@ the bottom, to fly to it and see facts about it. Use the panel at the top right
 to pause, change speed, and show or hide labels and orbits.
 
 See `CLAUDE.md` for how it's put together.
+
+## Import into Spline
+
+`exports/solar-system-for-spline.glb` is the solar system as one file for a
+new Spline project:
+
+1. In Spline, create a new file.
+2. Drag the `.glb` onto the canvas, or use the Import option in Spline's
+   file menu.
+
+It contains the Sun, the eight planets (with their real surface maps), the
+Moon, Saturn's rings, the satellite, orbit lines, a 240-rock asteroid belt
+and the comet on your original Path. Every object is named. It is static:
+motion, glow, eclipses and the sandbox tools only exist in the web app, so
+use Spline's states and events to animate it there. Lights aren't
+included; add a point light at the Sun in Spline.
+
+To rebuild it after changing `src/solar/data.js`:
+
+```bash
+npm run export:spline
+```

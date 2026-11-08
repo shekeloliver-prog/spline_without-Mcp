@@ -343,6 +343,32 @@ npx gltfjsx spline_3_d_starter_file.glb --transform --keepmeshes --keepnames
 - If the Spline path changes, also update `SPLINE_PATH_POINTS` in
   `src/solar/data.js` from the original GLB's `meshes[0].primitives[0].extras.path.points`.
 
+## Spline export
+
+`npm run export:spline` runs `scripts/export-spline.mjs`, which writes
+`exports/solar-system-for-spline.glb` for importing into a new Spline
+project. The file is committed so it can be downloaded directly.
+
+How it's built:
+- It reads the original `spline_3_d_starter_file.glb` with glTF-Transform
+  and reuses its Sphere, Cube and Path meshes. Primitives are cloned per
+  body, so each gets its own material while the vertex data stays shared.
+- It lays bodies out from `src/solar/data.js`, using the app's starting
+  angles.
+- It works in Spline units (scene units × 100) under a root node scaled by
+  0.01, matching Spline's own export.
+
+What it contains:
+- Textures from `public/textures/`.
+- Saturn's rings, with radial UVs.
+- Orbit tori.
+- 240 asteroids: nodes that share three roughened-cube meshes, which keeps
+  the file small.
+- The comet on the Path, using the same transform chain as `<Comet>`.
+
+Only static, standard glTF goes in. There are no lights, shaders, motion or
+UI.
+
 ## Conventions
 
 - Look-and-feel values live in config files: `sceneConfig.js` for the Spline
