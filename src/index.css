@@ -7,3 +7,17 @@ body,
   overflow: hidden;
   background: #f1f1f1;
 }
+
+.back-link {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.85);
+  color: #1d2233;
+  font: 500 14px system-ui, -apple-system, sans-serif;
+  text-decoration: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+.back-link:hover { background: #fff; }

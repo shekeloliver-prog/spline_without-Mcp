@@ -1,0 +1,131 @@
+.solar {
+  --panel-bg: rgba(12, 16, 32, 0.72);
+  --panel-border: rgba(160, 180, 255, 0.16);
+  --text: #e8ecff;
+  --muted: #9aa5c8;
+  --accent: #ffb547;
+
+  position: fixed;
+  inset: 0;
+  background: #03040a;
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: grid;
+  grid-template-columns: minmax(0, 340px) 1fr minmax(0, 300px);
+  grid-template-rows: auto 1fr auto auto;
+  grid-template-areas:
+    'title . controls'
+    '. . .'
+    'info . .'
+    'bodies bodies bodies';
+  gap: 12px;
+  padding: 16px;
+}
+
+.panel {
+  pointer-events: auto;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 14px 16px;
+}
+
+.hud-title { grid-area: title; }
+.hud-title h1 { margin: 0 0 4px; font-size: 20px; letter-spacing: 0.02em; }
+.hud-title p { margin: 0 0 8px; font-size: 13px; line-height: 1.45; color: var(--muted); }
+.hud-title a { color: var(--accent); font-size: 13px; text-decoration: none; }
+.hud-title a:hover { text-decoration: underline; }
+
+.hud-controls { grid-area: controls; display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+.hud-controls .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hud-controls .elapsed { color: var(--muted); font-variant-numeric: tabular-nums; }
+.hud-controls .speed { display: flex; flex-direction: column; gap: 6px; }
+.hud-controls .speed small { color: var(--muted); }
+.hud-controls input[type='range'] { width: 100%; accent-color: var(--accent); }
+.hud-controls .toggles { justify-content: flex-start; }
+.hud-controls .toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.hud-controls input[type='checkbox'] { accent-color: var(--accent); }
+
+.hud-info { grid-area: info; max-width: 340px; font-size: 13px; }
+.hud-info .info-head { display: flex; justify-content: space-between; align-items: center; }
+.hud-info h2 { margin: 0; font-size: 18px; }
+.hud-info p { margin: 6px 0 10px; line-height: 1.45; color: var(--muted); }
+.hud-info dl { margin: 0; display: grid; gap: 6px; }
+.hud-info dl div { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid var(--panel-border); padding-top: 6px; }
+.hud-info dt { color: var(--muted); }
+.hud-info dd { margin: 0; text-align: right; }
+
+.hud-bodies {
+  grid-area: bodies;
+  justify-self: center;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  max-width: 100%;
+  padding: 8px;
+  scrollbar-width: thin;
+}
+
+.solar button {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 7px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.solar button:hover { background: rgba(255, 255, 255, 0.12); }
+.solar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.solar button.active { border-color: var(--accent); color: var(--accent); }
+.solar button.primary { background: var(--accent); color: #1b1305; font-weight: 600; }
+.solar button.primary:hover { background: #ffc46b; }
+.solar button.ghost { background: transparent; padding: 4px 8px; color: var(--muted); }
+
+.solar-label {
+  color: #dfe6ff;
+  font: 500 12px system-ui, -apple-system, sans-serif;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(8, 12, 28, 0.55);
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (max-width: 760px) {
+  .hud {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr auto auto;
+    grid-template-areas: 'title' 'controls' '.' 'info' 'bodies';
+    gap: 8px;
+  }
+  .hud-title p { display: none; }
+  .hud-info { max-width: none; }
+  .hud-bodies { justify-self: stretch; }
+}
+
+.hud { z-index: 20; }
+
+@media (max-width: 760px) {
+  .panel { padding: 10px 12px; border-radius: 12px; }
+  .hud-title h1 { font-size: 17px; margin-bottom: 2px; }
+  .hud-title a { font-size: 12px; }
+  .hud-controls { gap: 8px; }
+  .hud-controls .speed small { display: none; }
+  .hud-info dl { gap: 4px; }
+}
+
+.solar-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 10; }
+.solar-labels .solar-label { position: absolute; left: 0; top: 0; visibility: hidden; will-change: transform; }

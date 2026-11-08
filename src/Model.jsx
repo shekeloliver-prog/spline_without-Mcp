@@ -4,7 +4,8 @@ Command: npx gltfjsx@6.5.3 spline_3_d_starter_file.glb --transform --keepmeshes 
 Files: spline_3_d_starter_file.glb [371.64KB] > spline_3_d_starter_file-transformed.glb [42.78KB] (88%)
 
 Hand edits after generation (redo them if you regenerate):
-  - Draco decoder is served locally from /draco/ instead of the gstatic CDN.
+  - Draco decoder is served locally from /draco/ instead of the gstatic CDN
+    (MODEL_URL / DRACO_URL live in src/assets.js, shared with the solar system).
   - The GLB carries no materials, so each mesh gets one from MATERIALS (sceneConfig.js).
   - castShadow / receiveShadow added to every mesh.
   - The exported Spline camera was removed from here; its values live in CAMERA (sceneConfig.js).
@@ -13,9 +14,7 @@ Hand edits after generation (redo them if you regenerate):
 import React from 'react'
 import { useGLTF } from '@react-three/drei'
 import { MATERIALS } from './sceneConfig.js'
-
-const MODEL_URL = '/spline_3_d_starter_file-transformed.glb'
-const DRACO_URL = '/draco/'
+import { MODEL_URL, DRACO_URL } from './assets.js'
 
 export function Model(props) {
   const { nodes } = useGLTF(MODEL_URL, DRACO_URL)
