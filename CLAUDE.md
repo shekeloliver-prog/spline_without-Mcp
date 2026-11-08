@@ -53,7 +53,11 @@ sources and licenses are in `CREDITS.md`). The Spline view loads no images.
         ├── sim.js                       SimContext/useSim, useSplineGeometry, orbitAngle, SPIN_SCALE
         ├── textureUrls.js               TEXTURES: key -> image URL (the one place image paths live)
         ├── textures.js                  useMaps(...keys) loader (colour space, anisotropy), glowTexture, rng
-        ├── shaders.js                   Earth night-lights patch, atmosphere rim shader, comet tail shader
+        ├── shaders.js                   patchSurface (eclipse shadows, night lights), atmosphere, comet tail,
+        │                                lens, accretion disk, supernova shell, corona texture
+        ├── physics.js                   Sandbox gravity: free bodies, attractors, wormholes, supernova shock
+        ├── Sandbox.jsx                  ClickPlane, PhysicsStep, LensCapture/Lens, BlackHole, WhiteHole,
+        │                                Wormhole, Effects (Flash, Debris, Impactor, SupernovaShell)
         ├── rocks.js                     makeRock(): roughens the Spline Cube into asteroid shapes
         └── solar.css                    HUD and label styles (responsive below 760px)
 ```
@@ -179,6 +183,76 @@ local frame (Spline units) is wrapped in two groups: the outer one applies
 point `anchor` (the tight end of the loop) therefore lands at `offset`, and
 the long end swings out past Neptune. To move the orbit, change those four
 values; the comet stays on the drawn track automatically.
+
+### Sandbox
+
+The Sandbox panel offers eclipse events and destructive tools. These are
+original mechanics; nothing is copied from any existing game.
+
+**Eclipses.** `startEvent('solar' | 'lunar')` does four things:
+- pauses simulated time;
+- sets `sim.event` (`{ type, startReal }`);
+- makes the Moon (in `Bodies.jsx`) slide across the Sun–Earth line over
+  `SANDBOX.eclipseSeconds`;
+- makes `CameraRig` hold a fixed viewpoint (`eclipseCamera()`) and aim the
+  camera itself, since OrbitControls is disabled.
+
+The two viewpoints:
+- **Solar:** the camera stands on the Sun–Earth line where the Moon looks 4%
+  larger than the Sun, so the eclipse is total. A corona sprite appears
+  behind the Moon.
+- **Lunar:** the camera looks at the Moon from beside Earth's night side.
+
+The shadows themselves are real, not staged. `patchSurface` gives Earth the
+Moon as an occluder and the Moon Earth as an occluder. It compares the
+angular sizes of Sun and occluder, which produces an umbra and penumbra
+(and annular eclipses where geometry says so). The Moon's material adds a
+red term in Earth's umbra, so a lunar eclipse gives a blood moon. On Earth,
+city lights switch on inside the Moon's shadow. `EventTimer` ends the event
+once it has played.
+
+**Physics** (`physics.js`). Planets stay on analytic orbits until a gravity
+tool or a supernova calls `activate()`. From then on every living planet is
+a free body integrated with sub-stepped semi-implicit Euler. Each planet
+keeps its own solar `gm` (ω²r³), so its undisturbed orbit is unchanged even
+though the stylised distances break Kepler's third law. The forces and
+outcomes:
+- black holes (attract, swallow inside the horizon, grow as they feed);
+- white holes (repel);
+- wormholes (attract gently; a body inside one mouth exits the other, keeping
+  its velocity);
+- the Sun (burns anything that falls in);
+- the supernova shock front (`shellRadius`): vaporises bodies inside
+  `vaporize` and kicks the rest outwards.
+
+The asteroid belt turns into ~1,400 particles under the same rules, in its
+own `useFrame`. `PhysicsStep` runs at priority −0.5, after `Clock`, and
+reports fates through `sim.onFate`.
+
+**Tools.**
+- Placement: `arm(tool)`, then a click on `ClickPlane` (the y=0 plane) or on
+  a body calls `placeAt`. Clicks are ignored if the pointer moved more than
+  4 px, so dragging the view never places anything.
+- Wormholes take two clicks; the first mouth shows as pending.
+- The impactor launches an `Impactor` effect at the clicked planet. On
+  arrival it calls `smash`, which leads to `destroy` (a flash plus debris in
+  the planet's `tint`).
+- Supernova: the Sun flares for 1.4 s, then becomes a pulsar (a small
+  blue-white star with rotating beams). A `SupernovaShell` expands with
+  simulated time. Each body keeps feeling the old star's gravity until the
+  shock front reaches it (`accel(..., pushed)`), so nothing escapes before
+  the blast arrives.
+- `restore()` resets physics, tools, effects and the star, and bumps
+  `resetKey`, which re-lays the asteroid belt.
+
+**Lensing.** `LensCapture` renders the scene, without lens quads, into a
+half-float render target once per frame, and only while a lens exists. Each
+`Lens` is a camera-facing quad that samples that capture:
+- black holes use the point-lens map β = θ − θE²/θ, with a black shadow and a
+  photon ring;
+- wormhole mouths use a tightening swirl with a violet throat.
+
+It is screen-space, so it bends planets, the Sun and the sky alike.
 
 ### Labels
 

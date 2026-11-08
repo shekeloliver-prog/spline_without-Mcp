@@ -45,13 +45,19 @@ export function LabelProjector() {
 
   useFrame(() => {
     if (!sim.showLabels) return
+    const gone = sim.destroyedRef.current
+    const eclipse = !!sim.event.current
     for (const { name, minor, belt } of LABELS) {
       const el = sim.labelEls.current[name]
       const body = sim.bodies.current[name]
       if (!el || !body) continue
       body.object.getWorldPosition(v)
       const hidden =
-        (belt && !sim.showBelt) || (minor && v.distanceTo(camera.position) > MINOR_RANGE)
+        eclipse ||
+        gone.has(name) ||
+        (name === 'Satellite' && gone.has('Earth')) ||
+        (belt && (!sim.showBelt || sim.physics.current.active)) ||
+        (minor && v.distanceTo(camera.position) > MINOR_RANGE)
       v.y += body.radius + 1
       v.project(camera)
       if (hidden || v.z > 1 || v.z < -1) {

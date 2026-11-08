@@ -29,6 +29,111 @@ function Elapsed({ time }) {
   return <span ref={ref}>0 days</span>
 }
 
+const TOOLS = [
+  ['blackhole', 'Black hole', 'Swallows anything that falls in, and grows as it feeds.'],
+  ['whitehole', 'White hole', 'The reverse of a black hole: it pushes everything away.'],
+  ['wormhole', 'Wormhole', 'Two linked mouths. Whatever falls into one comes out of the other.'],
+  ['impactor', 'Impactor', 'Hurls a big asteroid at a planet or the Moon.'],
+]
+
+const EVENT_TEXT = {
+  solar: {
+    title: 'Total solar eclipse',
+    body: 'The Moon passes between the Sun and Earth. At totality only the Sun’s faint outer atmosphere, the corona, is visible.',
+  },
+  lunar: {
+    title: 'Total lunar eclipse',
+    body: 'Earth passes between the Sun and the Moon. Sunlight bent through Earth’s atmosphere turns the Moon red.',
+  },
+}
+
+function toolHint(armed, pendingMouth) {
+  if (armed === 'impactor') return 'Click a planet or the Moon to hit it.'
+  if (armed === 'wormhole') return pendingMouth ? 'Now click where the second mouth goes.' : 'Click where the first mouth goes.'
+  if (armed) return 'Click the orbital plane, or a planet, to place it.'
+  return 'Pick a tool, then click in the scene. Esc cancels.'
+}
+
+const TOOL_NAMES = { blackhole: 'Black hole', whitehole: 'White hole', wormhole: 'Wormhole' }
+
+function SandboxPanel({ sandbox: sb, startsOpen }) {
+  const earthGone = sb.destroyed.has('Earth') || sb.destroyed.has('Moon')
+  const starGone = sb.starPhase !== 'normal'
+  return (
+    <details className="hud-sandbox panel" open={startsOpen}>
+      <summary>Sandbox</summary>
+
+      <div className="group">
+        <span className="group-label">Events</span>
+        <div className="two">
+          <button onClick={() => sb.startEvent('solar')} disabled={earthGone || starGone || !!sb.eventType}>
+            Solar eclipse
+          </button>
+          <button onClick={() => sb.startEvent('lunar')} disabled={earthGone || starGone || !!sb.eventType}>
+            Lunar eclipse
+          </button>
+        </div>
+      </div>
+
+      <div className="group">
+        <span className="group-label">Tools</span>
+        <div className="two">
+          {TOOLS.map(([key, label, about]) => (
+            <button
+              key={key}
+              className={sb.armed === key ? 'active' : ''}
+              aria-pressed={sb.armed === key}
+              title={about}
+              onClick={() => sb.arm(key)}
+              disabled={!!sb.eventType}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <button className="danger" onClick={sb.triggerSupernova} disabled={starGone || !!sb.eventType} title="The Sun explodes. Its shock wave vaporises the inner planets and flings the rest away.">
+          {starGone ? 'Sun is now a pulsar' : 'Supernova'}
+        </button>
+        <p className="hint" aria-live="polite">{toolHint(sb.armed, sb.pendingMouth)}</p>
+      </div>
+
+      <div className="group">
+        <label className="group-label" htmlFor="strength">Strength</label>
+        <div className="segmented" role="group" aria-label="Tool strength" id="strength">
+          {['small', 'medium', 'huge'].map((k) => (
+            <button key={k} className={sb.strength === k ? 'active' : ''} aria-pressed={sb.strength === k} onClick={() => sb.setStrength(k)}>
+              {k[0].toUpperCase() + k.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {sb.tools.length > 0 && (
+        <div className="group">
+          <span className="group-label">Placed</span>
+          <ul className="placed">
+            {sb.tools.map((t) => (
+              <li key={t.id}>
+                {TOOL_NAMES[t.type]}
+                <button className="ghost" onClick={() => sb.removeTool(t.id)} aria-label={`Remove ${TOOL_NAMES[t.type]}`}>
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {sb.destroyed.size > 0 && (
+        <p className="hint">Destroyed: {[...sb.destroyed].join(', ')}</p>
+      )}
+      <button className="restore" onClick={sb.restore}>
+        Restore the solar system
+      </button>
+    </details>
+  )
+}
+
 // The options section starts collapsed on phones, open elsewhere.
 function useStartsOpen() {
   const [open] = useState(() => !window.matchMedia?.('(max-width: 760px)').matches)
@@ -39,7 +144,7 @@ export default function Hud(props) {
   const {
     time, selected, onSelect, view, onView,
     paused, setPaused, speed, setSpeed,
-    options, setOption, onReset,
+    options, setOption, onReset, sandbox,
   } = props
   const body = BODY_LIST.find((b) => b.name === selected)
   const speedIndex = Math.max(0, SPEEDS.indexOf(speed))
@@ -59,6 +164,15 @@ export default function Hud(props) {
         </small>
       </header>
 
+      {sandbox.eventType && (
+        <section className="hud-event panel" aria-live="polite">
+          <h2>{EVENT_TEXT[sandbox.eventType].title}</h2>
+          <p>{EVENT_TEXT[sandbox.eventType].body}</p>
+          <button onClick={sandbox.endEvent}>End</button>
+        </section>
+      )}
+
+      <div className="hud-right">
       <section className="hud-controls panel" aria-label="Simulation controls">
         <div className="row">
           <button className="primary" onClick={() => setPaused(!paused)}>
@@ -123,15 +237,17 @@ export default function Hud(props) {
           <div className="group keys">
             <span className="group-label">Keys</span>
             <span>
-              <kbd>Space</kbd> pause · <kbd>←</kbd> <kbd>→</kbd> next body · <kbd>Esc</kbd> back
+              <kbd>Space</kbd> pause · <kbd>←</kbd> <kbd>→</kbd> next body · <kbd>Esc</kbd> back / cancel tool
             </span>
           </div>
 
           <button className="ghost reset" onClick={onReset}>
-            Reset everything
+            Reset options
           </button>
         </details>
       </section>
+      <SandboxPanel sandbox={sandbox} startsOpen={startsOpen} />
+      </div>
 
       {body && (
         <section className="hud-info panel" aria-live="polite">
@@ -165,6 +281,7 @@ export default function Hud(props) {
             className={selected === b.name ? 'active' : ''}
             aria-pressed={selected === b.name}
             onClick={() => onSelect(b.name)}
+            disabled={sandbox.destroyed.has(b.name) || !!sandbox.eventType}
           >
             {b.name}
           </button>

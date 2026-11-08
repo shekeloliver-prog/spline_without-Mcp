@@ -2,11 +2,12 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
-import { useSim, useSplineGeometry, orbitAngle, SPIN_SCALE } from './sim.js'
+import { useSim, useSplineGeometry, orbitAngle, SPIN_SCALE, now } from './sim.js'
 import { glowTexture, rng, useMaps } from './textures.js'
 import { makeRock } from './rocks.js'
-import { patchNightLights, atmosphereMaterial, tailMaterial } from './shaders.js'
-import { SUN, MOON, ASTEROID_BELT, COMET, SPLINE_PATH_POINTS } from './data.js'
+import { patchSurface, atmosphereMaterial, tailMaterial, coronaTexture } from './shaders.js'
+import { SUN, MOON, ASTEROID_BELT, COMET, SPLINE_PATH_POINTS, SANDBOX } from './data.js'
+import { accel, interact, shellRadius } from './physics.js'
 
 const DEG = Math.PI / 180
 
@@ -16,7 +17,8 @@ function useSelectable(name) {
   return {
     onClick: (e) => {
       e.stopPropagation()
-      sim.select(name)
+      if (e.delta > 4) return // that was a drag, not a click
+      sim.bodyClick(name, e.point)
     },
     onPointerOver: (e) => {
       e.stopPropagation()
@@ -63,20 +65,89 @@ export function Sun() {
   const ref = useRef()
   const handlers = useSelectable(SUN.name)
   const { sun } = useMaps('sun')
+  const mat = useRef()
+  const light = useRef()
+  const glowA = useRef()
+  const glowB = useRef()
+  const corona = useRef()
+  const beams = useRef()
   // Brighter than white on purpose: values above 1 are what the bloom picks up.
   const hot = useMemo(() => new THREE.Color(2.2, 1.75, 1.3), [])
+  const pulsarColor = useMemo(() => new THREE.Color(2.4, 2.7, 3.4), [])
+  const beamMaterial = useMemo(() => tailMaterial('#a9c8ff', 1.1), [])
+  const beamGeometry = useMemo(() => {
+    const g = new THREE.ConeGeometry(0.5, 1, 32, 6, true)
+    g.translate(0, -0.5, 0) // tip at the star, opening outwards
+    return g
+  }, [])
+  const baseScale = SUN.radius / sphereRadius
+
   useFrame(() => {
+    const star = sim.star.current
+    const t = now()
     ref.current.rotation.y = sim.time.current * 0.25
+    let size = 1
+    let glow = 1
+    let remnant = false
+    if (star.phase === 'supernova') {
+      // 0–1.4 s: the star brightens and swells; then it collapses to a pulsar.
+      const age = t - star.startReal
+      if (age < 1.4) {
+        const k = age / 1.4
+        size = 1 + k * 0.8
+        glow = 1 + k * 9
+        mat.current.color.copy(hot).multiplyScalar(1 + k * 6)
+      } else {
+        remnant = true
+        glow = Math.max(0.35, 10 * Math.exp(-(age - 1.4) * 1.2))
+      }
+    }
+    if (remnant) {
+      size = 1.1 / SUN.radius
+      mat.current.color.copy(pulsarColor)
+      mat.current.map = null
+      light.current.color.set('#bcd2ff')
+      light.current.intensity = 1.2
+      beams.current.visible = true
+      beams.current.rotation.y = t * 5
+    } else {
+      if (star.phase !== 'supernova') mat.current.color.copy(hot)
+      if (!mat.current.map) mat.current.map = sun
+      light.current.color.set('#fff4e6')
+      light.current.intensity = 3.2
+      beams.current.visible = false
+    }
+    mat.current.needsUpdate = mat.current.map !== mat.current.userData.lastMap
+    mat.current.userData.lastMap = mat.current.map
+    ref.current.scale.setScalar(baseScale * size)
+    glowA.current.scale.setScalar(SUN.radius * 3.2 * (remnant ? glow * 0.6 : glow))
+    glowB.current.scale.setScalar(SUN.radius * 7 * (remnant ? glow * 0.5 : Math.sqrt(glow)))
+    corona.current.visible = sim.event.current?.type === 'solar' && star.phase === 'normal'
   })
+
   return (
     <group ref={(o) => sim.register(SUN.name, o, SUN.radius)}>
-      <mesh ref={ref} geometry={sphere} scale={SUN.radius / sphereRadius} {...handlers}>
-        <meshBasicMaterial map={sun} color={hot} toneMapped={false} />
+      <mesh ref={ref} geometry={sphere} scale={baseScale} {...handlers}>
+        <meshBasicMaterial ref={mat} map={sun} color={hot} toneMapped={false} />
       </mesh>
-      <Glow scale={SUN.radius * 3.2} color={SUN.glowColor} opacity={0.55} />
-      <Glow scale={SUN.radius * 7} color="#ff9b45" opacity={0.18} />
+      <group ref={glowA}>
+        <Glow scale={1} color={SUN.glowColor} opacity={0.55} />
+      </group>
+      <group ref={glowB}>
+        <Glow scale={1} color="#ff9b45" opacity={0.18} />
+      </group>
+      {/* Corona: only seen when the Moon blocks the bright disc */}
+      <sprite ref={corona} scale={SUN.radius * 4.4} visible={false}>
+        <spriteMaterial map={coronaTexture()} color={[0.9, 0.95, 1.1]} transparent depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+      </sprite>
+      {/* Pulsar beams after a supernova: soft cones from the poles */}
+      <group ref={beams} visible={false} rotation-z={0.5}>
+        {[1, -1].map((side) => (
+          <mesh key={side} geometry={beamGeometry} material={beamMaterial} rotation-x={side > 0 ? Math.PI : 0} scale={[3, 30, 3]} />
+        ))}
+      </group>
       {/* decay 0: brightness doesn't fall off, so Neptune is still lit */}
-      <pointLight intensity={3.2} decay={0} color="#fff4e6" />
+      <pointLight ref={light} intensity={3.2} decay={0} color="#fff4e6" />
     </group>
   )
 }
@@ -112,10 +183,11 @@ function EarthSurface({ scale }) {
   const { sphere } = useSplineGeometry()
   const sim = useSim()
   const clouds = useRef()
+  const moonPos = useMemo(() => new THREE.Vector3(), [])
   const maps = useMaps('earth', 'earthSpecular', 'earthNight', 'earthClouds')
   const surface = useMemo(
     () =>
-      patchNightLights(
+      patchSurface(
         new THREE.MeshPhongMaterial({
           map: maps.earth,
           specularMap: maps.earthSpecular,
@@ -125,16 +197,24 @@ function EarthSurface({ scale }) {
           emissive: new THREE.Color('#ffd7a0'),
           emissiveIntensity: 1.4,
         }),
+        { nightLights: true },
       ),
     [maps],
   )
   const atmosphere = useMemo(() => atmosphereMaterial('#5aa8ff', 1.4), [])
   useFrame(() => {
     clouds.current.rotation.y = sim.time.current * 3
+    // The Moon's shadow (solar eclipses) falls on Earth.
+    const moon = sim.bodies.current.Moon
+    if (moon) {
+      moon.object.getWorldPosition(moonPos)
+      surface.uniforms.uOccluder.value.set(moonPos.x, moonPos.y, moonPos.z, moon.radius)
+    }
+    surface.uniforms.uSunRadius.value = sim.star.current.phase === 'normal' ? SUN.radius : 1.1
   })
   return (
     <>
-      <mesh geometry={sphere} scale={scale} material={surface} />
+      <mesh geometry={sphere} scale={scale} material={surface.material} />
       <mesh ref={clouds} geometry={sphere} scale={scale * 1.012}>
         <meshStandardMaterial color="#ffffff" alphaMap={maps.earthClouds} transparent depthWrite={false} roughness={1} />
       </mesh>
@@ -153,8 +233,14 @@ export function Planet({ planet, phase }) {
 
   useFrame(() => {
     const t = sim.time.current
-    const a = orbitAngle(t, planet.period, phase)
-    orbit.current.position.set(Math.cos(a) * planet.distance, 0, -Math.sin(a) * planet.distance)
+    const body = sim.physics.current.bodies[planet.name]
+    if (body?.free) {
+      orbit.current.position.copy(body.pos)
+    } else {
+      const a = orbitAngle(t, planet.period, phase)
+      orbit.current.position.set(Math.cos(a) * planet.distance, 0, -Math.sin(a) * planet.distance)
+    }
+    orbit.current.visible = body ? body.alive : true
     spin.current.rotation.y = (Math.PI * 2 * t * 365.25 * SPIN_SCALE) / planet.day
   })
 
@@ -171,7 +257,7 @@ export function Planet({ planet, phase }) {
         </group>
         {planet.ring && <Ring ring={planet.ring} />}
       </group>
-      {planet.moon && <Moon moon={planet.moon} />}
+      {planet.moon && <Moon moon={planet.moon} planetRadius={planet.radius} />}
       {planet.satellite && <Satellite satellite={planet.satellite} />}
     </group>
   )
@@ -206,16 +292,39 @@ function Ring({ ring }) {
   )
 }
 
-function Moon({ moon }) {
+function Moon({ moon, planetRadius }) {
   const { sphere, sphereRadius } = useSplineGeometry()
   const { moon: map } = useMaps('moon')
   const sim = useSim()
   const ref = useRef()
   const handlers = useSelectable(MOON.name)
+  const surface = useMemo(
+    () => patchSurface(new THREE.MeshStandardMaterial({ map, roughness: 1 }), { redden: 1 }),
+    [map],
+  )
+  const tmp = useMemo(() => ({ earth: new THREE.Vector3(), dir: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) }), [])
+
   useFrame(() => {
-    const a = orbitAngle(sim.time.current, moon.period)
-    ref.current.position.set(Math.cos(a) * moon.distance, Math.sin(a) * 0.15, -Math.sin(a) * moon.distance)
-    ref.current.rotation.y = a + Math.PI // tidally locked: same face toward Earth
+    const earth = ref.current.parent
+    earth.getWorldPosition(tmp.earth)
+    const event = sim.event.current
+    if (event) {
+      // Eclipse: slide the Moon across the Sun–Earth line.
+      const p = Math.min(1, (now() - event.startReal) / SANDBOX.eclipseSeconds)
+      const solar = event.type === 'solar'
+      tmp.dir.copy(tmp.earth).normalize().multiplyScalar(solar ? -1 : 1)
+      tmp.dir.applyAxisAngle(tmp.up, (p - 0.5) * (solar ? 0.6 : 1.2))
+      ref.current.position.copy(tmp.dir).multiplyScalar(moon.distance)
+      ref.current.rotation.y = Math.atan2(-tmp.dir.z, tmp.dir.x) + Math.PI
+    } else {
+      const a = orbitAngle(sim.time.current, moon.period)
+      ref.current.position.set(Math.cos(a) * moon.distance, Math.sin(a) * 0.15, -Math.sin(a) * moon.distance)
+      ref.current.rotation.y = a + Math.PI // tidally locked: same face toward Earth
+    }
+    ref.current.visible = !sim.destroyedRef.current.has(MOON.name)
+    // Earth's shadow (lunar eclipses) falls on the Moon, reddened by Earth's air.
+    surface.uniforms.uOccluder.value.set(tmp.earth.x, tmp.earth.y, tmp.earth.z, planetRadius)
+    surface.uniforms.uSunRadius.value = sim.star.current.phase === 'normal' ? SUN.radius : 1.1
   })
   return (
     <mesh
@@ -225,10 +334,9 @@ function Moon({ moon }) {
       }}
       geometry={sphere}
       scale={moon.radius / sphereRadius}
+      material={surface.material}
       {...handlers}
-    >
-      <meshStandardMaterial map={map} roughness={1} />
-    </mesh>
+    />
   )
 }
 
@@ -266,8 +374,12 @@ function Satellite({ satellite }) {
 }
 
 const ROCK_SEEDS = [11, 23, 37]
+const BELT_PERIOD = 4.6 // years: the belt turns at the period of its middle
 
 // The Spline Cube, roughened into three rock shapes, instanced ~1,400 times.
+// Normally the whole belt turns as one. Once the sandbox physics is active,
+// every rock becomes its own particle: pulled by black holes, carried through
+// wormholes, blown out by a supernova.
 export function AsteroidBelt() {
   const { cube } = useSplineGeometry()
   const sim = useSim()
@@ -276,28 +388,40 @@ export function AsteroidBelt() {
   const { count, inner, outer, thickness, size } = ASTEROID_BELT
   const rocks = useMemo(() => ROCK_SEEDS.map((seed) => makeRock(cube, seed)), [cube])
   const perRock = Math.ceil(count / rocks.length)
+  const total = perRock * rocks.length
+  // Per-instance layout (fixed) and particle state (used once physics is on).
+  const layout = useMemo(
+    () => ({
+      base: new Float32Array(total * 3),
+      quat: Array.from({ length: total }, () => new THREE.Quaternion()),
+      scale: Array.from({ length: total }, () => new THREE.Vector3()),
+    }),
+    [total],
+  )
+  const particles = useRef(null)
+  const lastT = useRef(0)
 
   useLayoutEffect(() => {
     const random = rng(7)
     const m = new THREE.Matrix4()
-    const q = new THREE.Quaternion()
     const e = new THREE.Euler()
     const p = new THREE.Vector3()
-    const sc = new THREE.Vector3()
     const color = new THREE.Color()
     rocks.forEach((rock, r) => {
       const mesh = meshes.current[r]
       const radius = rock.boundingSphere.radius
       for (let i = 0; i < perRock; i++) {
+        const n = r * perRock + i
         const a = random() * Math.PI * 2
         // Sum of three randoms: denser in the middle of the belt.
         const d = inner + (outer - inner) * ((random() + random() + random()) / 3)
         p.set(Math.cos(a) * d, (random() - 0.5) * thickness * (0.3 + random()), -Math.sin(a) * d)
         e.set(random() * Math.PI * 2, random() * Math.PI * 2, random() * Math.PI * 2)
-        q.setFromEuler(e)
+        layout.quat[n].setFromEuler(e)
         const k = (size[0] + (size[1] - size[0]) * random() ** 3) / radius
-        sc.set(k * (0.7 + random() * 0.6), k * (0.6 + random() * 0.5), k * (0.7 + random() * 0.6))
-        m.compose(p, q, sc)
+        layout.scale[n].set(k * (0.7 + random() * 0.6), k * (0.6 + random() * 0.5), k * (0.7 + random() * 0.6))
+        layout.base.set([p.x, p.y, p.z], n * 3)
+        m.compose(p, layout.quat[n], layout.scale[n])
         mesh.setMatrixAt(i, m)
         const shade = 0.55 + random() * 0.45 // carbon-dark to stony
         mesh.setColorAt(i, color.setRGB(0.42 * shade, 0.38 * shade, 0.34 * shade))
@@ -305,11 +429,76 @@ export function AsteroidBelt() {
       mesh.instanceMatrix.needsUpdate = true
       mesh.instanceColor.needsUpdate = true
     })
-  }, [rocks, perRock, inner, outer, thickness, size])
+    particles.current = null
+  }, [rocks, perRock, inner, outer, thickness, size, layout, sim.resetKey])
+
+  const tmp = useMemo(
+    () => ({ m: new THREE.Matrix4(), p: new THREE.Vector3(), v: new THREE.Vector3(), a: new THREE.Vector3(), zero: new THREE.Vector3() }),
+    [],
+  )
 
   useFrame(() => {
-    // The belt as a whole turns at the period of its middle (~4.6 years).
-    group.current.rotation.y = orbitAngle(sim.time.current, 4.6)
+    const physics = sim.physics.current
+    const t = sim.time.current
+    const dt = t - lastT.current
+    lastT.current = t
+    if (!physics.active) {
+      group.current.rotation.y = orbitAngle(t, BELT_PERIOD)
+      return
+    }
+
+    // First frame under physics: turn the rigidly rotating belt into particles.
+    if (!particles.current) {
+      const rot = group.current.rotation.y
+      const w = (Math.PI * 2) / BELT_PERIOD
+      const pos = Array.from({ length: total }, (_, n) =>
+        new THREE.Vector3().fromArray(layout.base, n * 3).applyAxisAngle(new THREE.Vector3(0, 1, 0), rot),
+      )
+      particles.current = {
+        pos,
+        vel: pos.map((q) => new THREE.Vector3(q.z * w, 0, -q.x * w)),
+        gm: pos.map((q) => w * w * Math.hypot(q.x, q.z) ** 3),
+        state: pos.map(() => ({ cooldown: 0, pushed: false, alive: true })),
+      }
+      group.current.rotation.y = 0
+    }
+
+    const P = particles.current
+    const steps = Math.min(24, Math.max(1, Math.ceil(dt / 0.002)))
+    const h = dt / steps
+    const shell = shellRadius(physics, t)
+    for (let n = 0; n < total; n++) {
+      const st = P.state[n]
+      if (!st.alive) continue
+      const pos = P.pos[n]
+      const vel = P.vel[n]
+      if (physics.supernova && !st.pushed && pos.length() < shell) {
+        st.pushed = true
+        vel.addScaledVector(tmp.p.copy(pos).normalize(), physics.supernova.boost * (0.7 + (n % 7) * 0.08))
+      }
+      for (let k = 0; k < steps; k++) {
+        accel(physics, pos, P.gm[n], tmp.a, st.pushed)
+        vel.addScaledVector(tmp.a, h)
+        pos.addScaledVector(vel, h)
+        st.cooldown -= h
+        const hit = interact(physics, st, pos, vel, 0.1)
+        if (hit && hit.fate !== 'teleported') {
+          st.alive = false
+          break
+        }
+      }
+    }
+    // Write the particles back into the three instanced meshes.
+    rocks.forEach((_, r) => {
+      const mesh = meshes.current[r]
+      for (let i = 0; i < perRock; i++) {
+        const n = r * perRock + i
+        const alive = P.state[n].alive
+        tmp.m.compose(P.pos[n], layout.quat[n], alive ? layout.scale[n] : tmp.zero)
+        mesh.setMatrixAt(i, tmp.m)
+      }
+      mesh.instanceMatrix.needsUpdate = true
+    })
   })
 
   return (
@@ -320,7 +509,7 @@ export function AsteroidBelt() {
         ref={(o) => sim.register('Asteroid belt', o, 0.6)}
       />
       {rocks.map((g, r) => (
-        <instancedMesh key={r} ref={(el) => (meshes.current[r] = el)} args={[g, undefined, perRock]}>
+        <instancedMesh key={r} ref={(el) => (meshes.current[r] = el)} args={[g, undefined, perRock]} frustumCulled={false}>
           <meshStandardMaterial roughness={1} metalness={0} />
         </instancedMesh>
       ))}

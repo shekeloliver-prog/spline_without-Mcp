@@ -30,6 +30,10 @@ export function useSplineGeometry() {
   }, [nodes])
 }
 
+// Wall-clock seconds, for effects that play at real speed (flashes, debris,
+// eclipses) whatever the simulation speed.
+export const now = () => performance.now() / 1000
+
 // Orbit angle (radians) of a body at time t (Earth years).
 export const orbitAngle = (t, period, phase = 0) => phase + (Math.PI * 2 * t) / period
 
