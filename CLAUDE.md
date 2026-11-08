@@ -60,6 +60,8 @@ sources and licenses are in `CREDITS.md`). The Spline view loads no images.
         ├── Sandbox.jsx                  ClickPlane, PhysicsStep, LensCapture/Lens, BlackHole, WhiteHole,
         │                                Wormhole, Effects (Flash, Debris, Impactor, SupernovaShell)
         ├── rocks.js                     makeRock(): roughens the Spline Cube into asteroid shapes
+        ├── orbits.js                    keplerPosition/keplerState/orbitPoints: dwarf-planet ellipses on the stylised scale
+        ├── SizeLineup.jsx               "Sizes" view: planets, Moon and Pluto at true relative size beside the Sun
         └── solar.css                    HUD and label styles (responsive below 760px)
 ```
 
@@ -121,8 +123,11 @@ returns its three geometries, plus their native sizes so they can be resized:
 │   │   │       ├── <Moon>               Earth only
 │   │   │       └── <Satellite>          Earth only (the Cube)
 │   │   ├── <AsteroidBelt>               3 instancedMeshes of roughened Cube rocks; the whole belt turns
-│   │   └── <Comet>                      hairline track + hidden anchor in the Path's local frame;
-│   │                                    head, coma and ion/dust tails drawn in world space
+│   │   ├── <AsteroidBelt config={KUIPER_BELT}>   same component, icy rocks beyond Neptune
+│   │   ├── per dwarf planet: <DwarfOrbitLine> + <DwarfPlanet> (+ Charon for Pluto)
+│   │   ├── <Comet>                      hairline track + hidden anchor in the Path's local frame;
+│   │   │                                head, coma and ion/dust tails drawn in world space
+│   │   └── <SizeLineup>                 far behind the Sun; only visible in the Sizes view
 │   ├── <OrbitControls makeDefault>
 │   ├── <CameraRig>                      fly-to / follow selected body; fly home on Overview
 │   ├── <LabelProjector>                 projects each body to screen and moves its DOM label
@@ -195,6 +200,51 @@ selects it and shows its fact card (`ALL_BODIES` in the HUD). The impactor
 can destroy any moon on its own. Destroying a planet also destroys its moons
 (`destroy` cascades via `moonsOf`). Moon labels are minor, so they only
 appear up close.
+
+### Dwarf planets and the Kuiper belt
+
+`DWARFS` (data.js) holds Ceres, Pluto, Haumea, Makemake and Eris with their
+real orbital elements: a, e, i, node, argument of perihelion, period, and
+a starting mean anomaly `M0`.
+- **Position.** `keplerPosition` (orbits.js) solves Kepler's equation in AU,
+  rotates into the ecliptic, then maps the distance from the Sun through
+  `auToScene`. That function is piecewise-linear through the planets'
+  stylised distances, then 1.05 units per AU beyond Neptune. Because the
+  remapping is radial, Pluto still dips just inside Neptune's orbit at
+  perihelion.
+- **Drawing.** `DwarfOrbitLine` draws each tilted ellipse in a slightly
+  violet colour. Haumea is stretched into its egg shape (`stretch`).
+- **Charon.** It is in `MOON_DATA.Pluto`, so `MOONS` (built from planets and
+  dwarfs) includes it, and destroying Pluto takes Charon with it.
+- **Sandbox.** Dwarf planets are full physics bodies: `resetPhysics(...,
+  DWARFS)`, plus `activate(..., DWARF_PHYSICS)`, whose `stateAt` is
+  `keplerState`.
+- **Fly-to bar.** They follow a divider after Neptune.
+
+The Kuiper belt is `<AsteroidBelt config={KUIPER_BELT}>`. The belt
+component takes its name, size, seed, colour and period from its config,
+and works with the physics exactly like the asteroid belt.
+
+### Today's sky, the tour and the Sizes view
+
+- **Today's sky** (Options → Time). `realPhases(date, t)` turns JPL mean
+  longitudes (`MEAN_LONGITUDE`) and the Moon's mean longitude into
+  starting angles, stored in `sim.phases`. Planets and Earth's Moon read them
+  in preference to their default phases. It also sets `sim.epoch`
+  (`{ t0, ms0 }`), so the HUD shows the simulated calendar date, and it
+  pauses. Mean longitudes ignore eccentricity, so positions are approximate
+  (within about 20° for Mercury and Mars, much closer for the rest). Dwarf
+  planets keep their default positions.
+- **Tour** (button beside Pause). It steps through `TOUR` (stop and
+  caption) every `TOUR_SECONDS`, skipping destroyed bodies. It has
+  Back / Hold / Next controls. Ending it (button, Esc, or using the fly-to
+  bar or a view button) returns to the view.
+- **Sizes view.** A fourth `VIEWS` preset; view presets may now carry their
+  own `target`. `SizeLineup` lays out `SIZE_LINEUP.bodies` at true relative
+  size (Earth radius = 0.9 units). Saturn gets its ring width, and small
+  worlds get a minimum slot so their labels fit. A Sun edge is drawn at the
+  same scale, and the line-up is lit by the real Sun from in front. It is
+  only visible in that view. Its labels (`size:*`) show only there.
 
 ### Frame order and the camera
 
@@ -412,6 +462,10 @@ How it's built:
   nested transforms.
 
 What it contains:
+- The Sun, planets, Earth's Moon and satellite, every major moon
+  (`moonsOf`, placed as on the app's first frame), the dwarf planets with
+  Charon, their tilted oval orbits as thin tubes, and 180 Kuiper belt
+  objects (grouped like the asteroids).
 - Textures from `public/textures/`.
 - Saturn's rings, with radial UVs.
 - Orbit tori.

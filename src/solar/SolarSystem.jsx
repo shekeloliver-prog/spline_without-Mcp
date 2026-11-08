@@ -5,19 +5,47 @@ import { EffectComposer, Bloom, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import * as THREE from 'three'
 import { SimContext, useSim, now } from './sim.js'
-import { Sky, Sun, Planet, OrbitLine, AsteroidBelt, Comet } from './Bodies.jsx'
+import { Sky, Sun, Planet, OrbitLine, AsteroidBelt, Comet, DwarfPlanet, DwarfOrbitLine } from './Bodies.jsx'
+import { SizeLineup } from './SizeLineup.jsx'
+import { keplerState } from './orbits.js'
 import { ClickPlane, PhysicsStep, LensCapture, BlackHole, WhiteHole, Wormhole, Effects } from './Sandbox.jsx'
 import { createPhysics, resetPhysics, activate } from './physics.js'
-import { PLANETS, MOON, MOONS, CAMERA_HOME, VIEWS, BODY_LIST, SECONDS_PER_YEAR, SANDBOX, SUN, moonsOf } from './data.js'
+import {
+  PLANETS, MOON, MOONS, DWARFS, KUIPER_BELT, CAMERA_HOME, VIEWS, BODY_LIST, SECONDS_PER_YEAR, SANDBOX, SUN, moonsOf,
+  MEAN_LONGITUDE, MOON_MEAN_LONGITUDE, TOUR, TOUR_SECONDS, auToScene,
+} from './data.js'
 import Hud from './Hud.jsx'
 import { Labels, LabelProjector } from './Labels.jsx'
 import './solar.css'
 
 // Starting angles, spread out so the planets don't line up on load.
 const PHASES = PLANETS.map((_, i) => (i * 2.39996) % (Math.PI * 2))
-const TINTS = Object.fromEntries([...PLANETS, MOON, ...MOONS].map((b) => [b.name, b.tint]))
+
+// Dwarf planets as the physics sees them: Kepler state now, and a solar pull
+// (n²a³ on the scene scale) that roughly keeps their orbit once free.
+const DWARF_PHYSICS = DWARFS.map((d) => {
+  const n = (Math.PI * 2) / d.orbit.period
+  return { name: d.name, gm: n * n * auToScene(d.orbit.a) ** 3, stateAt: (t, pos, vel) => keplerState(d.orbit, t, pos, vel) }
+})
+
+// Starting angles that put the planets (and the Moon's phase) where they
+// really are on `date`, at simulated time t. Mean longitudes: approximate.
+const DEG = Math.PI / 180
+function realPhases(date, t) {
+  const days = (date.getTime() - Date.UTC(2000, 0, 1, 12)) / 86400000
+  const centuries = days / 36525
+  const phases = {}
+  for (const p of PLANETS) {
+    const [l0, rate] = MEAN_LONGITUDE[p.name]
+    phases[p.name] = (l0 + rate * centuries) * DEG - (Math.PI * 2 * t) / p.period
+  }
+  const moonPeriod = PLANETS.find((p) => p.moon).moon.period
+  phases.Moon = (MOON_MEAN_LONGITUDE[0] + MOON_MEAN_LONGITUDE[1] * days) * DEG - (Math.PI * 2 * t) / moonPeriod
+  return phases
+}
+const TINTS = Object.fromEntries([...PLANETS, MOON, ...MOONS, ...DWARFS].map((b) => [b.name, b.tint]))
 const RADII = Object.fromEntries(
-  [...PLANETS, { name: 'Moon', radius: PLANETS[2].moon.radius }, ...MOONS].map((b) => [b.name, b.radius]),
+  [...PLANETS, { name: 'Moon', radius: PLANETS[2].moon.radius }, ...MOONS, ...DWARFS].map((b) => [b.name, b.radius]),
 )
 
 const DEFAULT_OPTIONS = {
@@ -57,8 +85,10 @@ function LoadingNote() {
 // camera off so the whole system still fits across the narrow width.
 function viewPosition(view, aspect, out) {
   const back = aspect < 1 ? Math.min(2.4, 1.15 / aspect) : 1
-  return out.set(...VIEWS[view].position).multiplyScalar(back)
+  const target = viewTarget(view, new THREE.Vector3())
+  return out.set(...VIEWS[view].position).sub(target).multiplyScalar(back).add(target)
 }
+const viewTarget = (view, out) => out.set(...(VIEWS[view].target ?? CAMERA_HOME.target))
 
 // Where to stand for each eclipse.
 //   Solar: on the Sun–Earth line, just above Earth, at the point where the
@@ -176,6 +206,7 @@ function CameraRig() {
     } else if (sim.flying.current) {
       v.following = null
       viewPosition(sim.view.current, aspect, v.homePos)
+      viewTarget(sim.view.current, v.homeTarget)
       controls.target.lerp(v.homeTarget, k)
       camera.position.lerp(v.homePos, k)
       if (camera.position.distanceTo(v.homePos) < 0.1) sim.flying.current = false
@@ -212,6 +243,10 @@ export default function SolarSystem() {
   const [eventType, setEventType] = useState(null)
   const [starPhase, setStarPhase] = useState('normal')
   const [resetKey, setResetKey] = useState(0)
+  const [todayOn, setTodayOn] = useState(false)
+  const [tour, setTour] = useState(null) // { index, playing } while the guided tour runs
+  const phases = useRef({}) // starting angles that override PHASES (today's sky)
+  const epoch = useRef(null) // { t0, ms0 }: simulated time t0 is calendar time ms0
 
   const time = useRef(0)
   const speedRef = useRef(speed)
@@ -226,7 +261,7 @@ export default function SolarSystem() {
   const physics = useRef(null)
   if (!physics.current) {
     physics.current = createPhysics()
-    resetPhysics(physics.current, PLANETS)
+    resetPhysics(physics.current, PLANETS, DWARFS)
   }
   const destroyedRef = useRef(destroyed)
   const event = useRef(null)
@@ -303,7 +338,8 @@ export default function SolarSystem() {
   )
 
   const startPhysics = useCallback(() => {
-    activate(physics.current, PLANETS, PHASES, time.current)
+    const phasesNow = PLANETS.map((p, i) => phases.current[p.name] ?? PHASES[i])
+    activate(physics.current, PLANETS, phasesNow, time.current, DWARF_PHYSICS)
   }, [])
 
   const addTool = useCallback(
@@ -419,7 +455,7 @@ export default function SolarSystem() {
   )
 
   const restore = useCallback(() => {
-    resetPhysics(physics.current, PLANETS)
+    resetPhysics(physics.current, PLANETS, DWARFS)
     setTools([])
     setEffects([])
     const none = new Set()
@@ -440,6 +476,41 @@ export default function SolarSystem() {
     setArmed((current) => (current === tool ? null : tool))
   }, [])
 
+  // Today's sky: put the planets and the Moon where they really are now, and
+  // start showing the calendar date as simulated time runs.
+  const showToday = useCallback(() => {
+    const t = time.current
+    const date = new Date()
+    phases.current = realPhases(date, t)
+    epoch.current = { t0: t, ms0: date.getTime() }
+    setTodayOn(true) // (free-flying planets in the sandbox keep their own paths)
+    setPaused(true) // hold on today's layout; Play runs time on from here
+  }, [])
+
+  // Guided tour: fly from stop to stop, a caption at each.
+  const tourStops = useMemo(() => TOUR.filter(([name]) => !destroyed.has(name)), [destroyed])
+  const startTour = useCallback(() => {
+    setArmed(null)
+    setTour({ index: 0, playing: true })
+  }, [])
+  const endTour = useCallback(() => {
+    setTour(null)
+    select(null) // back to the view instead of staying on the last stop
+  }, [select])
+  useEffect(() => {
+    if (!tour) return
+    const stop = tourStops[tour.index]
+    if (!stop) {
+      setTour(null)
+      select(null)
+      return
+    }
+    select(stop[0])
+    if (!tour.playing) return
+    const id = setTimeout(() => setTour((tr) => tr && { ...tr, index: tr.index + 1 }), TOUR_SECONDS * 1000)
+    return () => clearTimeout(id)
+  }, [tour, tourStops, select])
+
   // Keyboard: Space pauses, ← / → step through the bodies, Esc cancels a
   // tool, ends an eclipse, or returns to the view.
   useEffect(() => {
@@ -455,7 +526,8 @@ export default function SolarSystem() {
         const next = i === -1 ? (step > 0 ? 0 : alive.length - 1) : (i + step + alive.length) % alive.length
         select(alive[next].name)
       } else if (e.key === 'Escape') {
-        if (armed) {
+        if (tour) endTour()
+        else if (armed) {
           setArmed(null)
           setPendingMouth(null)
         } else if (event.current) endEvent()
@@ -464,7 +536,7 @@ export default function SolarSystem() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [select, armed, endEvent])
+  }, [select, armed, endEvent, tour, endTour])
 
   const sim = useMemo(
     () => ({
@@ -477,6 +549,8 @@ export default function SolarSystem() {
       flying,
       bodies,
       labelEls,
+      phases,
+      epoch,
       physics,
       star,
       event,
@@ -526,7 +600,15 @@ export default function SolarSystem() {
               </group>
             ))}
             <AsteroidBelt />
+            <AsteroidBelt config={KUIPER_BELT} />
+            {DWARFS.map((d) => (
+              <group key={d.name}>
+                <DwarfOrbitLine orbit={d.orbit} />
+                <DwarfPlanet dwarf={d} />
+              </group>
+            ))}
             <Comet />
+            <SizeLineup />
             <LensCapture lenses={lenses} />
             {tools.map((t) =>
               t.type === 'blackhole' ? (
@@ -566,9 +648,24 @@ export default function SolarSystem() {
         <Hud
           time={time}
           selected={selected}
-          onSelect={select}
+          onSelect={(name) => {
+            setTour(null)
+            select(name)
+          }}
           view={view}
-          onView={setView}
+          onView={(name) => {
+            setTour(null)
+            setView(name)
+          }}
+          today={{ on: todayOn, show: showToday, epoch }}
+          tour={tour && { ...tour, stops: tourStops }}
+          tourControls={{
+            start: startTour,
+            end: endTour,
+            next: () => setTour((tr) => tr && { ...tr, index: Math.min(tr.index + 1, tourStops.length - 1) }),
+            prev: () => setTour((tr) => tr && { ...tr, index: Math.max(tr.index - 1, 0) }),
+            toggle: () => setTour((tr) => tr && { ...tr, playing: !tr.playing }),
+          }}
           paused={paused}
           setPaused={setPaused}
           speed={speed}

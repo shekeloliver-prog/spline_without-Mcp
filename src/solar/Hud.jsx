@@ -15,18 +15,93 @@ const TOGGLES = [
 ]
 
 // Elapsed simulated time, written straight to the DOM a few times a second so
-// React doesn't re-render the whole HUD every frame.
-function Elapsed({ time }) {
+// React doesn't re-render the whole HUD every frame. Once "Today's sky" has
+// set a calendar epoch, it shows the simulated date instead.
+const DATE_FORMAT = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+function Elapsed({ time, epoch }) {
   const ref = useRef()
   useEffect(() => {
     const id = setInterval(() => {
       const years = time.current
-      ref.current.textContent =
-        years < 1 ? `${Math.floor(years * 365.25)} days` : `${years.toFixed(1)} years`
+      const e = epoch?.current
+      ref.current.textContent = e
+        ? DATE_FORMAT.format(new Date(e.ms0 + (years - e.t0) * 365.25 * 86400000))
+        : years < 1
+          ? `${Math.floor(years * 365.25)} days`
+          : `${years.toFixed(1)} years`
     }, 150)
     return () => clearInterval(id)
-  }, [time])
+  }, [time, epoch])
   return <span ref={ref}>0 days</span>
+}
+
+// The guided tour's caption, above the fly-to bar.
+function TourPanel({ tour, controls }) {
+  const [name, text] = tour.stops[tour.index] ?? []
+  if (!name) return null
+  return (
+    <section className="hud-tour panel" aria-live="polite">
+      <div className="tour-head">
+        <span className="tour-step">
+          Tour · stop {tour.index + 1} of {tour.stops.length}
+        </span>
+        <button className="ghost" onClick={controls.end} aria-label="End the tour">
+          ✕
+        </button>
+      </div>
+      <h2>{name}</h2>
+      <p>{text}</p>
+      <div className="tour-buttons">
+        <button onClick={controls.prev} disabled={tour.index === 0}>
+          ◀ Back
+        </button>
+        <button onClick={controls.toggle}>{tour.playing ? '❚❚ Hold' : '▶ Go on'}</button>
+        <button onClick={controls.next} disabled={tour.index >= tour.stops.length - 1}>
+          Next ▶
+        </button>
+      </div>
+      <div className="tour-progress" aria-hidden="true">
+        {tour.stops.map(([n], i) => (
+          <span key={n} className={i === tour.index ? 'on' : i < tour.index ? 'done' : ''} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+// One-time note about what's new; closing it is remembered on this device.
+const NEWS_KEY = 'solar-news-dismissed-v1'
+function WhatsNew() {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(NEWS_KEY) !== '1'
+    } catch {
+      return true
+    }
+  })
+  if (!open) return null
+  const close = () => {
+    setOpen(false)
+    try {
+      localStorage.setItem(NEWS_KEY, '1')
+    } catch {
+      // storage blocked: the note just comes back next time
+    }
+  }
+  return (
+    <aside className="hud-news panel">
+      <div className="tour-head">
+        <strong>New</strong>
+        <button className="ghost" onClick={close} aria-label="Close">
+          ✕
+        </button>
+      </div>
+      <p>
+        Dwarf planets and the Kuiper belt, a guided <b>Tour</b>, <b>Today’s sky</b> (real planet positions), and a{' '}
+        <b>Sizes</b> view comparing worlds at true scale.
+      </p>
+    </aside>
+  )
 }
 
 const TOOLS = [
@@ -145,6 +220,7 @@ export default function Hud(props) {
     time, selected, onSelect, view, onView,
     paused, setPaused, speed, setSpeed,
     options, setOption, onReset, sandbox,
+    today, tour, tourControls,
   } = props
   const body = ALL_BODIES.find((b) => b.name === selected)
   const speedIndex = Math.max(0, SPEEDS.indexOf(speed))
@@ -178,8 +254,12 @@ export default function Hud(props) {
           <button className="primary" onClick={() => setPaused(!paused)}>
             {paused ? '▶ Play' : '❚❚ Pause'}
           </button>
+          <button onClick={tour ? tourControls.end : tourControls.start} disabled={!!sandbox.eventType}>
+            {tour ? 'End tour' : '✦ Tour'}
+          </button>
           <span className="elapsed">
-            Elapsed: <Elapsed time={time} />
+            {today.on ? 'Date: ' : 'Elapsed: '}
+            <Elapsed time={time} epoch={today.epoch} />
           </span>
         </div>
         <label className="speed" htmlFor="speed">
@@ -214,6 +294,17 @@ export default function Hud(props) {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="group">
+            <span className="group-label">Time</span>
+            <button className={today.on ? 'active' : ''} onClick={today.show} title="Approximate: mean orbits">
+              {today.on ? '✓ Today’s sky (tap to refresh)' : 'Today’s sky'}
+            </button>
+            <small className="note">
+              Moves the planets and the Moon’s phase to where they are right now (approximately), and pauses. Press
+              Play to run time on from today.
+            </small>
           </div>
 
           <div className="group">
@@ -274,8 +365,12 @@ export default function Hud(props) {
         </section>
       )}
 
+      {tour && <TourPanel tour={tour} controls={tourControls} />}
+      {!tour && <WhatsNew />}
+
       <nav className="hud-bodies panel" aria-label="Fly to">
-        {BODY_LIST.map((b) => (
+        {BODY_LIST.map((b) => [
+          b.name === 'Ceres' && <span key="dwarf-divider" className="divider" title="Dwarf planets" aria-hidden="true" />,
           <button
             key={b.name}
             className={selected === b.name ? 'active' : ''}
@@ -284,8 +379,8 @@ export default function Hud(props) {
             disabled={sandbox.destroyed.has(b.name) || !!sandbox.eventType}
           >
             {b.name}
-          </button>
-        ))}
+          </button>,
+        ])}
       </nav>
     </div>
   )

@@ -19,7 +19,8 @@ import { fileURLToPath } from 'node:url'
 import { NodeIO } from '@gltf-transform/core'
 import * as THREE from 'three'
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { SUN, PLANETS, ASTEROID_BELT, COMET } from '../src/solar/data.js'
+import { SUN, PLANETS, ASTEROID_BELT, COMET, DWARFS, KUIPER_BELT, moonsOf } from '../src/solar/data.js'
+import { keplerPosition, orbitPoints } from '../src/solar/orbits.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const OUT = join(ROOT, 'exports/solar-system-for-spline.glb')
@@ -113,6 +114,29 @@ const MAP_FILE = {
   jupiter: 'jupiter.jpg', saturn: 'saturn.jpg', uranus: 'uranus.jpg', neptune: 'neptune.jpg',
 }
 const orbitMat = material('Orbit line', { color: [0.55, 0.62, 0.8, 0.35], rough: 1, blend: true })
+const dwarfOrbitMat = material('Dwarf orbit line', { color: [0.65, 0.59, 0.78, 0.35], rough: 1, blend: true })
+
+// A body's major moons, placed where the app shows them on its first frame
+// (angle = phase, in the parent's equatorial plane plus each moon's own
+// inclination). Shapes as in the app: lunar map tinted, plain tint, or rock.
+function addMoons(parentName, tilt) {
+  for (const m of moonsOf(parentName)) {
+    const plane = addNode(tilt, `${m.name} · orbit plane`, { rot: quat(((m.incl ?? 0) * Math.PI) / 180, 0, 0) })
+    const pos = [Math.cos(m.phase) * m.distance * U, 0, -Math.sin(m.phase) * m.distance * U]
+    const mat = material(m.name, {
+      map: m.shape === 'cratered' ? 'moon.jpg' : undefined,
+      color: [...new THREE.Color(m.tint).toArray(), 1],
+      rough: m.shape === 'smooth' ? 0.8 : 1,
+    })
+    if (m.shape === 'rock') {
+      const g = makeRock(m.name.length * 7 + 3)
+      g.computeBoundingSphere()
+      addNode(plane, m.name, { mesh: meshFrom(g, m.name, mat), pos, scale: (m.radius * U) / g.boundingSphere.radius })
+    } else {
+      addNode(plane, m.name, { mesh: reuse(sphereMesh, m.name, mat), pos, scale: sphereScale(m.radius) })
+    }
+  }
+}
 
 PLANETS.forEach((p, i) => {
   const a = PHASES[i]
@@ -150,6 +174,10 @@ PLANETS.forEach((p, i) => {
     addNode(sat, 'Satellite · panel L', { mesh: panel, pos: [-s * 1.7, 0, 0] })
     addNode(sat, 'Satellite · panel R', { mesh: panel, pos: [s * 1.7, 0, 0] })
   }
+
+  // Major moons, in the planet's equatorial plane, where they are at the
+  // app's first frame.
+  addMoons(p.name, tilt)
 
   // Orbit line: a thin flat torus.
   const torus = new THREE.TorusGeometry(p.distance * U, 6, 4, 256)
@@ -218,6 +246,46 @@ function makeRock(seed) {
   }
 }
 
+// ------------------------------------------------------------ dwarf planets
+for (const d of DWARFS) {
+  const pos = keplerPosition(d.orbit, 0, new THREE.Vector3()).multiplyScalar(U)
+  const holder = addNode(top, d.name, { pos: pos.toArray() })
+  const tilt = addNode(holder, `${d.name} · tilt`, { rot: quat(0, 0, (d.tilt * Math.PI) / 180) })
+  const mat = material(d.name, {
+    map: d.shape === 'cratered' ? 'moon.jpg' : undefined,
+    color: [...new THREE.Color(d.tint).toArray(), 1],
+    rough: d.shape === 'smooth' ? 0.75 : 1,
+  })
+  const k = sphereScale(d.radius)
+  const [sx, sy, sz] = d.stretch ?? [1, 1, 1]
+  addNode(tilt, `${d.name} · surface`, { mesh: reuse(sphereMesh, d.name, mat), scale: [k * sx, k * sy, k * sz] })
+  addMoons(d.name, tilt)
+  // Its tilted, oval orbit as a thin tube.
+  const curve = new THREE.CatmullRomCurve3(orbitPoints(d.orbit, 240).slice(0, -1).map((q) => new THREE.Vector3(...q).multiplyScalar(U)), true)
+  const tube = new THREE.TubeGeometry(curve, 480, 6, 4, true)
+  addNode(top, `Orbit · ${d.name}`, { mesh: meshFrom(tube, `Orbit · ${d.name}`, dwarfOrbitMat) })
+}
+
+// ------------------------------------------------------------ Kuiper belt
+{
+  const random = rng(KUIPER_BELT.seed)
+  const icy = material('Kuiper rock', { color: [...KUIPER_BELT.color, 1], rough: 1 })
+  const rocks = [41, 53, 67].map((seed, k) => meshFrom(makeRock(seed), `Kuiper rock ${k + 1}`, icy))
+  const belt = addNode(top, 'Kuiper belt')
+  for (let i = 0; i < 180; i++) {
+    const a = random() * Math.PI * 2
+    const d = KUIPER_BELT.inner + (KUIPER_BELT.outer - KUIPER_BELT.inner) * ((random() + random() + random()) / 3)
+    const size = (KUIPER_BELT.size[0] + (KUIPER_BELT.size[1] - KUIPER_BELT.size[0]) * random() ** 2) * 2.2
+    const k = (size * U) / CUBE_SIZE
+    addNode(belt, `Kuiper object ${i + 1}`, {
+      mesh: rocks[i % 3],
+      pos: [Math.cos(a) * d * U, (random() - 0.5) * KUIPER_BELT.thickness * U * (0.3 + random()), -Math.sin(a) * d * U],
+      rot: quat(random() * 6, random() * 6, random() * 6),
+      scale: [k, k * (0.7 + random() * 0.6), k * (0.8 + random() * 0.4)],
+    })
+  }
+}
+
 // ------------------------------------------------------------ comet + your Path
 {
   const outer = addNode(top, 'Comet orbit (your Spline Path)', {
@@ -235,13 +303,14 @@ function makeRock(seed) {
 
 // Flatten: every object carries its full position, rotation and scale itself,
 // directly under the root (which has no transform). Nothing depends on how
-// an importer treats nested groups. Only the asteroids stay inside their
-// "Asteroid belt" group, which also has no transform.
+// an importer treats nested groups. Only the belt rocks stay inside their
+// "Asteroid belt" / "Kuiper belt" groups, which also have no transform.
 {
-  const belt = top.listChildren().find((n) => n.getName() === 'Asteroid belt')
+  const belts = top.listChildren().filter((n) => n.getName() === 'Asteroid belt' || n.getName() === 'Kuiper belt')
+  const keep = new Set([top, ...belts])
   const meshNodes = []
   scene.traverse((n) => {
-    if (n.getMesh() && n.getParentNode() !== top && n.getParentNode() !== belt) meshNodes.push(n)
+    if (n.getMesh() && !keep.has(n.getParentNode())) meshNodes.push(n)
   })
   for (const n of meshNodes) {
     const world = n.getWorldMatrix()
@@ -254,7 +323,7 @@ function makeRock(seed) {
   while (removed) {
     removed = false
     scene.traverse((n) => {
-      if (n !== top && n !== belt && !n.getMesh() && n.listChildren().length === 0) {
+      if (!keep.has(n) && !n.getMesh() && n.listChildren().length === 0) {
         n.dispose()
         removed = true
       }

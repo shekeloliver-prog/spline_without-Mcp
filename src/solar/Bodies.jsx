@@ -7,6 +7,7 @@ import { glowTexture, rng, useMaps } from './textures.js'
 import { makeRock } from './rocks.js'
 import { patchSurface, atmosphereMaterial, tailMaterial, coronaTexture } from './shaders.js'
 import { SUN, MOON, ASTEROID_BELT, COMET, SPLINE_PATH_POINTS, SANDBOX, moonsOf } from './data.js'
+import { keplerPosition, orbitPoints } from './orbits.js'
 import { accel, interact, shellRadius } from './physics.js'
 
 const DEG = Math.PI / 180
@@ -237,7 +238,7 @@ export function Planet({ planet, phase }) {
     if (body?.free) {
       orbit.current.position.copy(body.pos)
     } else {
-      const a = orbitAngle(t, planet.period, phase)
+      const a = orbitAngle(t, planet.period, sim.phases.current[planet.name] ?? phase)
       orbit.current.position.set(Math.cos(a) * planet.distance, 0, -Math.sin(a) * planet.distance)
     }
     orbit.current.visible = body ? body.alive : true
@@ -270,7 +271,7 @@ export function Planet({ planet, phase }) {
 // Saturn's rings from a real radial colour/opacity profile. The texture is a
 // strip running from the inner edge to the outer edge, so the ring's UVs are
 // rewritten to "distance from centre" instead of RingGeometry's planar UVs.
-function Ring({ ring }) {
+export function Ring({ ring }) {
   const { saturnRing } = useMaps('saturnRing')
   const geometry = useMemo(() => {
     const g = new THREE.RingGeometry(ring.inner, ring.outer, 180, 1)
@@ -363,7 +364,7 @@ function Moon({ moon, planetRadius }) {
       ref.current.position.copy(tmp.dir).multiplyScalar(moon.distance)
       ref.current.rotation.y = Math.atan2(-tmp.dir.z, tmp.dir.x) + Math.PI
     } else {
-      const a = orbitAngle(sim.time.current, moon.period)
+      const a = orbitAngle(sim.time.current, moon.period, sim.phases.current.Moon ?? 0)
       ref.current.position.set(Math.cos(a) * moon.distance, Math.sin(a) * 0.15, -Math.sin(a) * moon.distance)
       ref.current.rotation.y = a + Math.PI // tidally locked: same face toward Earth
     }
@@ -420,18 +421,18 @@ function Satellite({ satellite }) {
 }
 
 const ROCK_SEEDS = [11, 23, 37]
-const BELT_PERIOD = 4.6 // years: the belt turns at the period of its middle
 
 // The Spline Cube, roughened into three rock shapes, instanced ~1,400 times.
-// Normally the whole belt turns as one. Once the sandbox physics is active,
-// every rock becomes its own particle: pulled by black holes, carried through
-// wormholes, blown out by a supernova.
-export function AsteroidBelt() {
+// Normally the whole belt turns as one, at the period of its middle. Once
+// the sandbox physics is active, every rock becomes its own particle: pulled
+// by black holes, carried through wormholes, blown out by a supernova.
+// `config` is ASTEROID_BELT by default; KUIPER_BELT reuses the same code.
+export function AsteroidBelt({ config = ASTEROID_BELT }) {
   const { cube } = useSplineGeometry()
   const sim = useSim()
   const group = useRef()
   const meshes = useRef([])
-  const { count, inner, outer, thickness, size } = ASTEROID_BELT
+  const { count, inner, outer, thickness, size, period, seed, color: tint, name } = config
   const rocks = useMemo(() => ROCK_SEEDS.map((seed) => makeRock(cube, seed)), [cube])
   const perRock = Math.ceil(count / rocks.length)
   const total = perRock * rocks.length
@@ -448,7 +449,7 @@ export function AsteroidBelt() {
   const lastT = useRef(0)
 
   useLayoutEffect(() => {
-    const random = rng(7)
+    const random = rng(seed)
     const m = new THREE.Matrix4()
     const e = new THREE.Euler()
     const p = new THREE.Vector3()
@@ -470,13 +471,13 @@ export function AsteroidBelt() {
         m.compose(p, layout.quat[n], layout.scale[n])
         mesh.setMatrixAt(i, m)
         const shade = 0.55 + random() * 0.45 // carbon-dark to stony
-        mesh.setColorAt(i, color.setRGB(0.42 * shade, 0.38 * shade, 0.34 * shade))
+        mesh.setColorAt(i, color.setRGB(tint[0] * shade, tint[1] * shade, tint[2] * shade))
       }
       mesh.instanceMatrix.needsUpdate = true
       mesh.instanceColor.needsUpdate = true
     })
     particles.current = null
-  }, [rocks, perRock, inner, outer, thickness, size, layout, sim.resetKey])
+  }, [rocks, perRock, inner, outer, thickness, size, seed, tint, layout, sim.resetKey])
 
   const tmp = useMemo(
     () => ({ m: new THREE.Matrix4(), p: new THREE.Vector3(), v: new THREE.Vector3(), a: new THREE.Vector3(), zero: new THREE.Vector3() }),
@@ -489,14 +490,14 @@ export function AsteroidBelt() {
     const dt = t - lastT.current
     lastT.current = t
     if (!physics.active) {
-      group.current.rotation.y = orbitAngle(t, BELT_PERIOD)
+      group.current.rotation.y = orbitAngle(t, period)
       return
     }
 
     // First frame under physics: turn the rigidly rotating belt into particles.
     if (!particles.current) {
       const rot = group.current.rotation.y
-      const w = (Math.PI * 2) / BELT_PERIOD
+      const w = (Math.PI * 2) / period
       const pos = Array.from({ length: total }, (_, n) =>
         new THREE.Vector3().fromArray(layout.base, n * 3).applyAxisAngle(new THREE.Vector3(0, 1, 0), rot),
       )
@@ -552,7 +553,7 @@ export function AsteroidBelt() {
       {/* Anchor for the "Asteroid belt" label, riding along with the rocks */}
       <object3D
         position={[0, 0, -(inner + outer) / 2]}
-        ref={(o) => sim.register('Asteroid belt', o, 0.6)}
+        ref={(o) => sim.register(name, o, 0.6)}
       />
       {rocks.map((g, r) => (
         <instancedMesh key={r} ref={(el) => (meshes.current[r] = el)} args={[g, undefined, perRock]} frustumCulled={false}>
@@ -658,4 +659,61 @@ export function Comet() {
       </group>
     </>
   )
+}
+
+// A dwarf planet on its real (tilted, oval) orbit. Like the planets it is
+// clickable, destroyable, and handed over to the sandbox physics when that
+// switches on. Haumea is stretched into its egg shape.
+export function DwarfPlanet({ dwarf }) {
+  const { sphere, sphereRadius } = useSplineGeometry()
+  const { moon: lunarMap } = useMaps('moon')
+  const sim = useSim()
+  const holder = useRef()
+  const spin = useRef()
+  const handlers = useSelectable(dwarf.name)
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: dwarf.tint,
+        map: dwarf.shape === 'cratered' ? lunarMap : null,
+        roughness: dwarf.shape === 'smooth' ? 0.75 : 1,
+      }),
+    [dwarf, lunarMap],
+  )
+  const k = dwarf.radius / sphereRadius
+  const [sx, sy, sz] = dwarf.stretch ?? [1, 1, 1]
+
+  useFrame(() => {
+    const t = sim.time.current
+    const body = sim.physics.current.bodies[dwarf.name]
+    if (body?.free) holder.current.position.copy(body.pos)
+    else keplerPosition(dwarf.orbit, t, holder.current.position)
+    holder.current.visible = body ? body.alive : true
+    spin.current.rotation.y = (Math.PI * 2 * t * 365.25 * SPIN_SCALE) / dwarf.day
+  }, MOVE_PRIORITY)
+
+  return (
+    <group
+      ref={(o) => {
+        holder.current = o
+        sim.register(dwarf.name, o, dwarf.radius)
+      }}
+    >
+      <group rotation-z={dwarf.tilt * DEG}>
+        <mesh ref={spin} geometry={sphere} scale={[k * sx, k * sy, k * sz]} material={material} {...handlers} />
+        {moonsOf(dwarf.name).map((m) => (
+          <PlanetMoon key={m.name} moon={m} />
+        ))}
+      </group>
+    </group>
+  )
+}
+
+// A dwarf planet's orbit: tilted and oval, drawn a little more violet than
+// the planets' circles so the two kinds are easy to tell apart.
+export function DwarfOrbitLine({ orbit }) {
+  const sim = useSim()
+  const points = useMemo(() => orbitPoints(orbit), [orbit])
+  if (!sim.showOrbits) return null
+  return <Line points={points} color="#a596c8" transparent opacity={0.12} lineWidth={1} />
 }

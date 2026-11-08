@@ -7,6 +7,12 @@ starter file (`spline_3_d_starter_file.glb`):
 - **Cube:** a satellite orbiting Earth, and the rocks of the asteroid belt.
 - **Path:** the orbit of a comet.
 
+It also has the major moons of every planet, the dwarf planets (Ceres,
+Pluto with Charon, Haumea, Makemake, Eris) and the Kuiper belt, a guided
+**Tour**, **Today's sky** (planets where they really are now), a **Sizes**
+view at true scale, eclipses, and a sandbox with black holes, wormholes,
+impacts and a supernova.
+
 The planets wear real NASA-based maps. Earth has clouds, city lights on its
 night side and a thin atmosphere. Credits are in `CREDITS.md`.
 

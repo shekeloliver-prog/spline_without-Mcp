@@ -42,7 +42,8 @@ export function circularGm(distance, period) {
 }
 
 // Switch every living planet over to free flight, starting from where it is now.
-export function activate(physics, planets, phases, t) {
+// `extra` adds other bodies (the dwarf planets): { name, stateAt(t, pos, vel), gm }.
+export function activate(physics, planets, phases, t, extra = []) {
   if (physics.active) return
   physics.active = true
   planets.forEach((p, i) => {
@@ -52,11 +53,19 @@ export function activate(physics, planets, phases, t) {
     b.gm = circularGm(p.distance, p.period)
     b.free = true
   })
+  for (const x of extra) {
+    const b = physics.bodies[x.name]
+    if (!b || !b.alive) continue
+    x.stateAt(t, b.pos, b.vel)
+    b.gm = x.gm
+    b.free = true
+  }
 }
 
-export function resetPhysics(physics, planets) {
+// `extra`: other bodies to track (anything with a name and a radius).
+export function resetPhysics(physics, planets, extra = []) {
   Object.assign(physics, createPhysics())
-  planets.forEach((p) => {
+  ;[...planets, ...extra].forEach((p) => {
     physics.bodies[p.name] = {
       free: false,
       alive: true,

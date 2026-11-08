@@ -264,3 +264,44 @@
     overflow-y: auto;
   }
 }
+
+/* Big update: tour, what's new, today's sky, dwarf-planet divider, sizes view */
+.segmented:has(> :nth-child(4)) { grid-template-columns: repeat(4, 1fr); }
+.hud-controls .row { flex-wrap: wrap; }
+.hud-controls .note { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.more .group > button { text-align: left; }
+.hud-bodies .divider {
+  flex: none;
+  width: 1px;
+  margin: 4px 4px;
+  background: var(--panel-border);
+}
+.hud-tour,
+.hud-news {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(max(16px, env(safe-area-inset-bottom, 0px)) + 70px);
+  width: min(460px, calc(100% - 32px));
+  z-index: 24;
+  font-size: 13px;
+}
+.hud-news { width: min(380px, calc(100% - 32px)); }
+.hud-news p { margin: 4px 0 0; color: var(--muted); line-height: 1.45; }
+.hud-news b { color: var(--text); font-weight: 600; }
+.tour-head { display: flex; justify-content: space-between; align-items: center; }
+.tour-step { color: var(--accent); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.hud-tour h2 { margin: 2px 0 4px; font-size: 18px; }
+.hud-tour p { margin: 0 0 10px; color: var(--muted); line-height: 1.5; }
+.tour-buttons { display: flex; gap: 6px; }
+.tour-buttons button { flex: 1; }
+.tour-progress { display: flex; gap: 4px; margin-top: 10px; }
+.tour-progress span { flex: 1; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); }
+.tour-progress span.done { background: rgba(255, 181, 71, 0.45); }
+.tour-progress span.on { background: var(--accent); }
+.solar-label.sizes { color: rgba(240, 232, 214, 0.9); }
+.solar.in-event .hud-tour,
+.solar.in-event .hud-news { visibility: hidden; }
+@media (max-width: 760px) {
+  .hud-tour, .hud-news { bottom: calc(max(16px, env(safe-area-inset-bottom, 0px)) + 64px); }
+}

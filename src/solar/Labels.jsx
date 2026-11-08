@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSim } from './sim.js'
-import { BODY_LIST, MOONS, labelDetail } from './data.js'
+import { BODY_LIST, MOONS, SIZE_LINEUP, labelDetail } from './data.js'
 
 // Everything that gets a label. `minor` labels (small objects next to a
 // planet) only appear once the camera is close, so the overview stays clean.
@@ -11,6 +11,10 @@ const LABELS = [
   { name: 'Satellite', detail: 'Orbiting Earth', minor: true },
   ...MOONS.map((m) => ({ name: m.name, detail: m.short, minor: true })),
   { name: 'Asteroid belt', detail: '2.2–3.2 AU · millions of rocks', belt: true },
+  { name: 'Kuiper belt', detail: '30–50 AU · icy leftovers', belt: true },
+  // Size line-up (only shown in the Sizes view)
+  { name: 'size:Sun', title: 'Sun', detail: `${SIZE_LINEUP.sun} × Earth`, sizes: true },
+  ...SIZE_LINEUP.bodies.map(([n, r]) => ({ name: `size:${n}`, title: n, detail: `${r} × Earth`, sizes: true })),
 ]
 const MINOR_RANGE = 30 // scene units from the camera
 
@@ -21,16 +25,16 @@ export function Labels() {
   const className = ['solar-labels', sim.labelDetails ? 'with-details' : ''].join(' ')
   return (
     <div className={className} style={{ display: sim.showLabels ? undefined : 'none' }} aria-hidden="true">
-      {LABELS.map(({ name, detail, belt }) => (
+      {LABELS.map(({ name, title, detail, belt, sizes }) => (
         <span
           key={name}
-          className={belt ? 'solar-label belt' : 'solar-label'}
+          className={belt ? 'solar-label belt' : sizes ? 'solar-label sizes' : 'solar-label'}
           ref={(el) => {
             if (el) sim.labelEls.current[name] = el
             else delete sim.labelEls.current[name]
           }}
         >
-          <b>{name}</b>
+          <b>{title ?? name}</b>
           <small>{detail}</small>
         </span>
       ))}
@@ -48,13 +52,15 @@ export function LabelProjector() {
     if (!sim.showLabels) return
     const gone = sim.destroyedRef.current
     const eclipse = !!sim.event.current
-    for (const { name, minor, belt } of LABELS) {
+    const inSizes = sim.view.current === 'sizes' && !sim.selected.current
+    for (const { name, minor, belt, sizes } of LABELS) {
       const el = sim.labelEls.current[name]
       const body = sim.bodies.current[name]
       if (!el || !body) continue
       body.object.getWorldPosition(v)
       const hidden =
         eclipse ||
+        (sizes ? !inSizes : inSizes) ||
         gone.has(name) ||
         (name === 'Satellite' && gone.has('Earth')) ||
         (belt && (!sim.showBelt || sim.physics.current.active)) ||

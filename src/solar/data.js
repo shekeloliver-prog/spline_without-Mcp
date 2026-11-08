@@ -14,6 +14,8 @@ export const VIEWS = {
   overview: { label: 'Overview', position: [0, 85, 160] },
   top: { label: 'Top', position: [0, 195, 0.01] },
   side: { label: 'Side', position: [0, 7, 180] },
+  // Looks at the size line-up, parked far behind the Sun (see SIZE_LINEUP).
+  sizes: { label: 'Sizes', position: [30, 11, -568], target: [30, 0, -700] },
 }
 
 export const SUN = {
@@ -97,7 +99,10 @@ export const PLANETS = [
   },
 ]
 
-export const ASTEROID_BELT = { count: 1400, inner: 36, outer: 41.5, thickness: 1.4, size: [0.04, 0.2] }
+export const ASTEROID_BELT = {
+  name: 'Asteroid belt', count: 1400, inner: 36, outer: 41.5, thickness: 1.4, size: [0.04, 0.2],
+  period: 4.6, seed: 7, color: [0.42, 0.38, 0.34],
+}
 
 // The comet follows the closed Path drawn in Spline. These are the path's
 // control points exactly as stored in spline_3_d_starter_file.glb, in the
@@ -129,7 +134,79 @@ export const COMET = {
 }
 
 // Order of the fly-to bar and the ← / → keys.
-export const BODY_LIST = [SUN, ...PLANETS.flatMap((p) => (p.name === 'Earth' ? [p, MOON] : [p])), COMET]
+// ---------------------------------------------------------------- dwarf planets
+// Real orbital elements (J2000, rounded): semi-major axis a (AU),
+// eccentricity e, inclination i, longitude of the ascending node node,
+// argument of perihelion peri (degrees), period (years), and the mean anomaly
+// M0 at the start of the simulation. Positions come from Kepler's equation in
+// AU, then the distance from the Sun is mapped onto the app's stylised scale
+// (auToScene), so Pluto still dips just inside Neptune's orbit at perihelion.
+export const DWARFS = [
+  {
+    name: 'Ceres', tint: '#8f8a84', shape: 'cratered', km: 939,
+    orbit: { a: 2.77, e: 0.0785, i: 10.59, node: 80.3, peri: 73.6, period: 4.6, M0: 40 },
+    day: 0.378, tilt: 4,
+    facts: { Type: 'Dwarf planet', Diameter: '939 km', 'From the Sun': '2.8 AU', Year: '4.6 years', Day: '9.1 hours', Discovered: '1801' },
+    blurb: 'The largest object in the asteroid belt, and the first asteroid ever found.',
+  },
+  {
+    name: 'Pluto', tint: '#d6bfa2', shape: 'cratered', km: 2377,
+    orbit: { a: 39.48, e: 0.2488, i: 17.16, node: 110.3, peri: 113.8, period: 247.9, M0: 54 },
+    day: -6.39, tilt: 122.5,
+    facts: { Type: 'Dwarf planet', Diameter: '2,377 km', 'From the Sun': '39.5 AU (average)', Year: '248 years', Day: '6.4 Earth days (backwards)', Discovered: '1930' },
+    blurb: 'Its oval orbit brings it closer to the Sun than Neptune for 20 years of every 248.',
+  },
+  {
+    name: 'Haumea', tint: '#e9e9ea', shape: 'smooth', km: 1600, stretch: [1.35, 0.68, 1.05],
+    orbit: { a: 43.1, e: 0.195, i: 28.2, node: 122.2, peri: 239, period: 284, M0: 210 },
+    day: 0.163, tilt: 0,
+    facts: { Type: 'Dwarf planet', Size: 'about 2,100 × 1,000 km', 'From the Sun': '43 AU (average)', Year: '284 years', Day: '3.9 hours', Discovered: '2004' },
+    blurb: 'Spins so fast, once every 4 hours, that it has stretched into an egg shape. It also has a ring.',
+  },
+  {
+    name: 'Makemake', tint: '#c98f6a', shape: 'smooth', km: 1430,
+    orbit: { a: 45.8, e: 0.161, i: 29.0, node: 79.4, peri: 297, period: 305, M0: 150 },
+    day: 0.95, tilt: 0,
+    facts: { Type: 'Dwarf planet', Diameter: 'about 1,430 km', 'From the Sun': '45.8 AU (average)', Year: '305 years', Day: '22.8 hours', Discovered: '2005' },
+    blurb: 'A reddish world coated in frozen methane, far out in the Kuiper belt.',
+  },
+  {
+    name: 'Eris', tint: '#ecebe8', shape: 'smooth', km: 2326,
+    orbit: { a: 67.8, e: 0.44, i: 44.0, node: 35.9, peri: 151.6, period: 557, M0: 205 },
+    day: 15.8, tilt: 0,
+    facts: { Type: 'Dwarf planet', Diameter: '2,326 km', 'From the Sun': '68 AU (average)', Year: '557 years', Day: '15.8 Earth days', Discovered: '2005' },
+    blurb: 'Almost as big as Pluto: its discovery led to the definition of “dwarf planet”.',
+  },
+]
+
+// Distance from the Sun in AU -> scene units, through the planets' own
+// stylised distances (and the asteroid belt), then 1.05 units per AU beyond
+// Neptune.
+const AU_KNOTS = [
+  [0, 9], [0.39, 14], [0.72, 19], [1, 25], [1.52, 31], [2.77, 38.7], [5.2, 46], [9.54, 62], [19.2, 76], [30.1, 88],
+]
+export function auToScene(au) {
+  if (au >= 30.1) return 88 + (au - 30.1) * 1.05
+  for (let k = 1; k < AU_KNOTS.length; k++) {
+    const [a1, s1] = AU_KNOTS[k]
+    if (au <= a1) {
+      const [a0, s0] = AU_KNOTS[k - 1]
+      return s0 + ((au - a0) / (a1 - a0)) * (s1 - s0)
+    }
+  }
+  return 88
+}
+
+// Radius in the scene: Earth-relative like the moons, a little enlarged so
+// these small worlds stay visible.
+for (const d of DWARFS) d.radius = Math.max(0.12, (d.km / 2 / 6371) * 1.3)
+
+export const KUIPER_BELT = {
+  name: 'Kuiper belt', count: 900, inner: 95, outer: 112, thickness: 12, size: [0.05, 0.22],
+  period: 290, seed: 13, color: [0.5, 0.5, 0.55],
+}
+
+export const BODY_LIST = [SUN, ...PLANETS.flatMap((p) => (p.name === 'Earth' ? [p, MOON] : [p])), ...DWARFS, COMET]
 
 // One-line summary shown under a label when label details are on.
 export const labelDetail = (body) => body.short ?? `${body.facts['From the Sun']} · ${body.facts.Year}`
@@ -200,6 +277,10 @@ const MOON_DATA = {
     { name: 'Oberon', km: 1523, distanceKm: 583520, days: 13.463, tint: '#a39a92', shape: 'cratered',
       blurb: 'The outermost large moon of Uranus, old and heavily cratered.' },
   ],
+  Pluto: [
+    { name: 'Charon', km: 1212, distanceKm: 19591, days: 6.387, tint: '#9a958f', shape: 'cratered',
+      blurb: 'Half Pluto’s size: the two are locked face to face, orbiting a point between them.' },
+  ],
   Neptune: [
     { name: 'Proteus', km: 420, distanceKm: 117647, days: 1.122, tint: '#5f5a56', shape: 'rock',
       blurb: 'About as big as a moon can be without gravity pulling it round.' },
@@ -220,7 +301,7 @@ const fmt = (n) => Math.round(n).toLocaleString('en-US')
 //         the smallest moons stay clickable;
 //   distance: compressed (square root of the real ratio) so every system
 //             fits between its neighbours' orbits.
-export const MOONS = PLANETS.flatMap((planet) =>
+export const MOONS = [...PLANETS, ...DWARFS].flatMap((planet) =>
   (MOON_DATA[planet.name] ?? []).map((m, i) => {
     const planetKm = km(planet.facts.Diameter) / 2
     const ratio = m.distanceKm / planetKm
@@ -233,7 +314,7 @@ export const MOONS = PLANETS.flatMap((planet) =>
       // A tilt over 90° already makes the orbit run backwards (Triton),
       // so the period's sign only matters for low-tilt orbits.
       period: (Math.max(days, 1) * MOON_TIME_SLOW * ((m.incl ?? 0) > 90 ? 1 : Math.sign(m.days))) / 365.25,
-      phase: (i * 2.39996 + planet.distance) % (Math.PI * 2),
+      phase: (i * 2.39996 + (planet.distance ?? planet.orbit.a)) % (Math.PI * 2),
       short: `Moon of ${planet.name} · ${days < 2 ? `${(days * 24).toFixed(1)} h` : `${days.toFixed(1)} d`}`,
       facts: {
         Type: `Moon of ${planet.name}`,
@@ -249,3 +330,53 @@ export const MOONS = PLANETS.flatMap((planet) =>
 // Every selectable body: the fly-to bar (BODY_LIST) plus the other moons.
 export const ALL_BODIES = [...BODY_LIST, ...MOONS]
 export const moonsOf = (planetName) => MOONS.filter((m) => m.planet === planetName)
+
+// ---------------------------------------------------------------- today's sky
+// Mean longitudes at J2000 (degrees) and their rates (degrees per Julian
+// century) from JPL's approximate planetary elements. A mean longitude ignores
+// orbital eccentricity, so positions are approximate (worst for Mercury and
+// Mars, within about 20°). The Moon uses its mean geocentric longitude.
+export const MEAN_LONGITUDE = {
+  Mercury: [252.2503235, 149472.67411175],
+  Venus: [181.9790995, 58517.81538729],
+  Earth: [100.46457166, 35999.37244981],
+  Mars: [-4.55343205, 19140.30268499],
+  Jupiter: [34.39644051, 3034.74612775],
+  Saturn: [49.95424423, 1222.49362201],
+  Uranus: [313.23810451, 428.48202785],
+  Neptune: [-55.12002969, 218.45945325],
+}
+export const MOON_MEAN_LONGITUDE = [218.316, 13.176396] // degrees, degrees per day
+
+// ---------------------------------------------------------------- size line-up
+// True relative sizes, in Earth radii. Shown far behind the Sun at
+// SIZE_LINEUP.center (the "Sizes" view), lit by the Sun from in front.
+export const SIZE_LINEUP = {
+  center: [0, 0, -700],
+  unit: 0.9, // scene units per Earth radius
+  gap: 2.2,
+  sun: 109.1,
+  bodies: [
+    ['Jupiter', 11.21], ['Saturn', 9.45], ['Uranus', 4.01], ['Neptune', 3.88],
+    ['Earth', 1], ['Venus', 0.95], ['Mars', 0.532], ['Mercury', 0.383], ['Moon', 0.273], ['Pluto', 0.187],
+  ],
+}
+
+// ---------------------------------------------------------------- guided tour
+export const TOUR_SECONDS = 9
+export const TOUR = [
+  ['Sun', 'Our star: a ball of hot plasma 109 times wider than Earth. Its light takes 8 minutes to reach us.'],
+  ['Mercury', 'The smallest planet. With almost no air to hold heat, its days reach 430 °C and its nights fall to −180 °C.'],
+  ['Venus', 'Thick clouds of sulfuric acid trap so much heat that Venus is hotter than Mercury, though twice as far from the Sun.'],
+  ['Earth', 'The only world known to have life, oceans of liquid water on its surface, and plate tectonics.'],
+  ['Moon', 'Formed from debris after a Mars-sized body hit the young Earth. Twelve people have walked on it.'],
+  ['Mars', 'Home to Olympus Mons, the tallest volcano in the solar system, about two and a half times as high as Everest.'],
+  ['Jupiter', 'Its Great Red Spot is a storm wider than Earth that has raged for centuries.'],
+  ['Io', 'Jupiter’s tides knead Io’s interior so hard that hundreds of volcanoes erupt across its surface.'],
+  ['Saturn', 'Saturn is less dense than water. Its rings are mostly ice, but only tens of metres thick in places.'],
+  ['Titan', 'Saturn’s largest moon has rain, rivers and seas, but they are made of liquid methane and ethane.'],
+  ['Uranus', 'An ice giant tipped on its side, so each pole gets 42 years of sunlight and then 42 years of darkness.'],
+  ['Neptune', 'The windiest planet: its storms reach about 2,000 km/h.'],
+  ['Pluto', 'A dwarf planet with mountains of water ice and a vast heart-shaped plain of frozen nitrogen.'],
+  ['Comet', 'Comets are dirty snowballs. Near the Sun their ice turns to gas, blowing out tails millions of kilometres long.'],
+]
