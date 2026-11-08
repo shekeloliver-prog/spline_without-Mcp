@@ -37,6 +37,9 @@ export default function Hud(props) {
           and the comet rides its Path.
         </p>
         <a href="#/spline">View the original Spline scene →</a>
+        <small className="credits">
+          Maps: <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noopener noreferrer">Solar System Scope</a> (CC BY 4.0), NASA
+        </small>
       </header>
 
       <section className="hud-controls panel" aria-label="Simulation controls">

@@ -3,7 +3,9 @@ import { useFrame } from '@react-three/fiber'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSim, useSplineGeometry, orbitAngle, SPIN_SCALE } from './sim.js'
-import { planetTexture, ringTexture, glowTexture, rng } from './textures.js'
+import { glowTexture, rng, useMaps } from './textures.js'
+import { makeRock } from './rocks.js'
+import { patchNightLights, atmosphereMaterial, tailMaterial } from './shaders.js'
 import { SUN, ASTEROID_BELT, COMET, SPLINE_PATH_POINTS } from './data.js'
 
 const DEG = Math.PI / 180
@@ -26,35 +28,54 @@ function useSelectable(name) {
   }
 }
 
+function Glow({ scale, color, opacity = 1 }) {
+  return (
+    <sprite scale={scale}>
+      <spriteMaterial
+        map={glowTexture()}
+        color={color}
+        opacity={opacity}
+        transparent
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+        toneMapped={false}
+      />
+    </sprite>
+  )
+}
+
+// Milky Way panorama on a huge inside-out sphere, dimmed so it reads as
+// background starlight rather than a painted wall.
+export function Sky() {
+  const { sphere, sphereRadius } = useSplineGeometry()
+  const { milkyWay } = useMaps('milkyWay')
+  return (
+    <mesh geometry={sphere} scale={1500 / sphereRadius} rotation={[0.5, 0, 0.35]}>
+      <meshBasicMaterial map={milkyWay} side={THREE.BackSide} color="#c4c8d4" depthWrite={false} toneMapped={false} />
+    </mesh>
+  )
+}
+
 export function Sun() {
   const { sphere, sphereRadius } = useSplineGeometry()
   const sim = useSim()
   const ref = useRef()
   const handlers = useSelectable(SUN.name)
-  const map = useMemo(
-    () => planetTexture({ name: 'Sun', texture: 'rocky', colors: ['#ffb238', '#ff8a1f', '#ffd36b', '#ff6a00'] }),
-    [],
-  )
+  const { sun } = useMaps('sun')
+  // Brighter than white on purpose: values above 1 are what the bloom picks up.
+  const hot = useMemo(() => new THREE.Color(2.2, 1.75, 1.3), [])
   useFrame(() => {
-    ref.current.rotation.y = sim.time.current * 0.4
+    ref.current.rotation.y = sim.time.current * 0.25
   })
   return (
     <group ref={(o) => sim.register(SUN.name, o, SUN.radius)}>
       <mesh ref={ref} geometry={sphere} scale={SUN.radius / sphereRadius} {...handlers}>
-        <meshBasicMaterial map={map} color="#ffe2a8" toneMapped={false} />
+        <meshBasicMaterial map={sun} color={hot} toneMapped={false} />
       </mesh>
-      <sprite scale={SUN.radius * 5.5}>
-        <spriteMaterial
-          map={glowTexture()}
-          color={SUN.glowColor}
-          transparent
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-          toneMapped={false}
-        />
-      </sprite>
+      <Glow scale={SUN.radius * 3.2} color={SUN.glowColor} opacity={0.55} />
+      <Glow scale={SUN.radius * 7} color="#ff9b45" opacity={0.18} />
       {/* decay 0: brightness doesn't fall off, so Neptune is still lit */}
-      <pointLight intensity={2.6} decay={0} color="#fff3e0" />
+      <pointLight intensity={3.2} decay={0} color="#fff4e6" />
     </group>
   )
 }
@@ -63,23 +84,71 @@ export function OrbitLine({ radius }) {
   const sim = useSim()
   const points = useMemo(() => {
     const pts = []
-    for (let i = 0; i <= 160; i++) {
-      const a = (i / 160) * Math.PI * 2
+    for (let i = 0; i <= 200; i++) {
+      const a = (i / 200) * Math.PI * 2
       pts.push([Math.cos(a) * radius, 0, -Math.sin(a) * radius])
     }
     return pts
   }, [radius])
   if (!sim.showOrbits) return null
-  return <Line points={points} color="#9fb4ff" transparent opacity={0.18} lineWidth={1} />
+  return <Line points={points} color="#7f8db0" transparent opacity={0.1} lineWidth={1} />
+}
+
+function PlanetSurface({ planet, scale }) {
+  const { sphere } = useSplineGeometry()
+  const maps = useMaps(planet.map)
+  return (
+    <mesh geometry={sphere} scale={scale}>
+      <meshStandardMaterial map={maps[planet.map]} roughness={0.95} metalness={0} />
+    </mesh>
+  )
+}
+
+// Earth gets the full treatment: NASA day map, ocean glint from a specular
+// mask, city lights on the night side, a moving cloud layer and a thin
+// blue atmosphere at the limb.
+function EarthSurface({ scale }) {
+  const { sphere } = useSplineGeometry()
+  const sim = useSim()
+  const clouds = useRef()
+  const maps = useMaps('earth', 'earthSpecular', 'earthNight', 'earthClouds')
+  const surface = useMemo(
+    () =>
+      patchNightLights(
+        new THREE.MeshPhongMaterial({
+          map: maps.earth,
+          specularMap: maps.earthSpecular,
+          specular: new THREE.Color('#5a6f88'),
+          shininess: 22,
+          emissiveMap: maps.earthNight,
+          emissive: new THREE.Color('#ffd7a0'),
+          emissiveIntensity: 1.4,
+        }),
+      ),
+    [maps],
+  )
+  const atmosphere = useMemo(() => atmosphereMaterial('#5aa8ff', 1.4), [])
+  useFrame(() => {
+    clouds.current.rotation.y = sim.time.current * 3
+  })
+  return (
+    <>
+      <mesh geometry={sphere} scale={scale} material={surface} />
+      <mesh ref={clouds} geometry={sphere} scale={scale * 1.012}>
+        <meshStandardMaterial color="#ffffff" alphaMap={maps.earthClouds} transparent depthWrite={false} roughness={1} />
+      </mesh>
+      <mesh geometry={sphere} scale={scale * 1.035} material={atmosphere} />
+    </>
+  )
 }
 
 export function Planet({ planet, phase }) {
-  const { sphere, sphereRadius } = useSplineGeometry()
+  const { sphereRadius } = useSplineGeometry()
   const sim = useSim()
   const orbit = useRef()
   const spin = useRef()
   const handlers = useSelectable(planet.name)
-  const map = useMemo(() => planetTexture(planet), [planet])
+  const scale = planet.radius / sphereRadius
 
   useFrame(() => {
     const t = sim.time.current
@@ -96,9 +165,9 @@ export function Planet({ planet, phase }) {
       }}
     >
       <group rotation-z={planet.tilt * DEG}>
-        <mesh ref={spin} geometry={sphere} scale={planet.radius / sphereRadius} {...handlers}>
-          <meshStandardMaterial map={map} roughness={0.85} metalness={0} />
-        </mesh>
+        <group ref={spin} {...handlers}>
+          {planet.name === 'Earth' ? <EarthSurface scale={scale} /> : <PlanetSurface planet={planet} scale={scale} />}
+        </group>
         {planet.ring && <Ring ring={planet.ring} />}
       </group>
       {planet.moon && <Moon moon={planet.moon} />}
@@ -107,13 +176,26 @@ export function Planet({ planet, phase }) {
   )
 }
 
+// Saturn's rings from a real radial colour/opacity profile. The texture is a
+// strip running from the inner edge to the outer edge, so the ring's UVs are
+// rewritten to "distance from centre" instead of RingGeometry's planar UVs.
 function Ring({ ring }) {
-  const map = useMemo(() => ringTexture(ring), [ring])
+  const { saturnRing } = useMaps('saturnRing')
+  const geometry = useMemo(() => {
+    const g = new THREE.RingGeometry(ring.inner, ring.outer, 180, 1)
+    const pos = g.attributes.position
+    const uv = g.attributes.uv
+    const v = new THREE.Vector3()
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i)
+      uv.setXY(i, (v.length() - ring.inner) / (ring.outer - ring.inner), 0.5)
+    }
+    return g
+  }, [ring])
   return (
-    <mesh rotation-x={-Math.PI / 2}>
-      <ringGeometry args={[ring.inner, ring.outer, 128]} />
+    <mesh geometry={geometry} rotation-x={-Math.PI / 2}>
       <meshStandardMaterial
-        map={map}
+        map={saturnRing}
         transparent
         side={THREE.DoubleSide}
         depthWrite={false}
@@ -125,21 +207,23 @@ function Ring({ ring }) {
 
 function Moon({ moon }) {
   const { sphere, sphereRadius } = useSplineGeometry()
+  const { moon: map } = useMaps('moon')
   const sim = useSim()
   const ref = useRef()
   useFrame(() => {
     const a = orbitAngle(sim.time.current, moon.period)
     ref.current.position.set(Math.cos(a) * moon.distance, Math.sin(a) * 0.15, -Math.sin(a) * moon.distance)
+    ref.current.rotation.y = a + Math.PI // tidally locked: same face toward Earth
   })
   return (
     <mesh ref={ref} geometry={sphere} scale={moon.radius / sphereRadius}>
-      <meshStandardMaterial color={moon.color} roughness={1} />
+      <meshStandardMaterial map={map} roughness={1} />
     </mesh>
   )
 }
 
-// The Spline Cube, reused as a little satellite with solar panels, on a
-// tilted orbit around Earth.
+// The Spline Cube as a satellite body wrapped in gold insulation foil, with
+// two solar-cell wings, on a tilted orbit around Earth.
 function Satellite({ satellite }) {
   const { cube, cubeSize } = useSplineGeometry()
   const sim = useSim()
@@ -154,27 +238,29 @@ function Satellite({ satellite }) {
   return (
     <group ref={ref}>
       <mesh geometry={cube} scale={s / cubeSize}>
-        <meshStandardMaterial color="#d9dde4" metalness={0.6} roughness={0.35} />
+        <meshStandardMaterial color="#c79a3a" metalness={0.7} roughness={0.32} />
       </mesh>
-      <mesh position={[s * 1.6, 0, 0]}>
-        <boxGeometry args={[s * 2, s * 0.08, s * 0.9]} />
-        <meshStandardMaterial color="#2b4d9b" metalness={0.3} roughness={0.4} />
-      </mesh>
-      <mesh position={[-s * 1.6, 0, 0]}>
-        <boxGeometry args={[s * 2, s * 0.08, s * 0.9]} />
-        <meshStandardMaterial color="#2b4d9b" metalness={0.3} roughness={0.4} />
-      </mesh>
+      {[1, -1].map((side) => (
+        <mesh key={side} position={[side * s * 1.7, 0, 0]}>
+          <boxGeometry args={[s * 2.2, s * 0.04, s * 0.8]} />
+          <meshStandardMaterial color="#14213d" metalness={0.5} roughness={0.25} />
+        </mesh>
+      ))}
     </group>
   )
 }
 
-// Hundreds of copies of the Spline Cube, drawn in a single instanced call.
+const ROCK_SEEDS = [11, 23, 37]
+
+// The Spline Cube, roughened into three rock shapes, instanced ~1,400 times.
 export function AsteroidBelt() {
-  const { cube, cubeSize } = useSplineGeometry()
+  const { cube } = useSplineGeometry()
   const sim = useSim()
-  const mesh = useRef()
   const group = useRef()
+  const meshes = useRef([])
   const { count, inner, outer, thickness, size } = ASTEROID_BELT
+  const rocks = useMemo(() => ROCK_SEEDS.map((seed) => makeRock(cube, seed)), [cube])
+  const perRock = Math.ceil(count / rocks.length)
 
   useLayoutEffect(() => {
     const random = rng(7)
@@ -183,19 +269,28 @@ export function AsteroidBelt() {
     const e = new THREE.Euler()
     const p = new THREE.Vector3()
     const sc = new THREE.Vector3()
-    for (let i = 0; i < count; i++) {
-      const a = random() * Math.PI * 2
-      const r = inner + (outer - inner) * Math.sqrt(random())
-      p.set(Math.cos(a) * r, (random() - 0.5) * thickness, -Math.sin(a) * r)
-      e.set(random() * Math.PI, random() * Math.PI, random() * Math.PI)
-      q.setFromEuler(e)
-      const k = (size[0] + (size[1] - size[0]) * random() ** 2) / cubeSize
-      sc.set(k * (0.6 + random() * 0.8), k * (0.6 + random() * 0.8), k * (0.6 + random() * 0.8))
-      m.compose(p, q, sc)
-      mesh.current.setMatrixAt(i, m)
-    }
-    mesh.current.instanceMatrix.needsUpdate = true
-  }, [count, inner, outer, thickness, size, cubeSize])
+    const color = new THREE.Color()
+    rocks.forEach((rock, r) => {
+      const mesh = meshes.current[r]
+      const radius = rock.boundingSphere.radius
+      for (let i = 0; i < perRock; i++) {
+        const a = random() * Math.PI * 2
+        // Sum of three randoms: denser in the middle of the belt.
+        const d = inner + (outer - inner) * ((random() + random() + random()) / 3)
+        p.set(Math.cos(a) * d, (random() - 0.5) * thickness * (0.3 + random()), -Math.sin(a) * d)
+        e.set(random() * Math.PI * 2, random() * Math.PI * 2, random() * Math.PI * 2)
+        q.setFromEuler(e)
+        const k = (size[0] + (size[1] - size[0]) * random() ** 3) / radius
+        sc.set(k * (0.7 + random() * 0.6), k * (0.6 + random() * 0.5), k * (0.7 + random() * 0.6))
+        m.compose(p, q, sc)
+        mesh.setMatrixAt(i, m)
+        const shade = 0.55 + random() * 0.45 // carbon-dark to stony
+        mesh.setColorAt(i, color.setRGB(0.42 * shade, 0.38 * shade, 0.34 * shade))
+      }
+      mesh.instanceMatrix.needsUpdate = true
+      mesh.instanceColor.needsUpdate = true
+    })
+  }, [rocks, perRock, inner, outer, thickness, size])
 
   useFrame(() => {
     // The belt as a whole turns at the period of its middle (~4.6 years).
@@ -204,23 +299,27 @@ export function AsteroidBelt() {
 
   return (
     <group ref={group}>
-      <instancedMesh ref={mesh} args={[cube, undefined, count]}>
-        <meshStandardMaterial color="#8a7f74" roughness={1} />
-      </instancedMesh>
+      {rocks.map((g, r) => (
+        <instancedMesh key={r} ref={(el) => (meshes.current[r] = el)} args={[g, undefined, perRock]}>
+          <meshStandardMaterial roughness={1} metalness={0} />
+        </instancedMesh>
+      ))}
     </group>
   )
 }
 
-// Comet riding the closed Path from the Spline file. The path mesh and the
-// curve the comet follows share one local frame (Spline units), so the comet
-// stays exactly on the drawn track. The head and tail are drawn in world
-// space so the tail can always point away from the Sun, as real comet tails do.
+// Comet riding the closed Path from the Spline file: its control points (in
+// Spline units) define both the hairline track and the curve the comet
+// follows, so the comet stays exactly on the drawn track. Head and tails are drawn in world space:
+// the blue ion tail points straight away from the Sun, and the broader dust
+// tail curves back along the orbit, as on real comets.
 export function Comet() {
-  const { path, sphere, sphereRadius } = useSplineGeometry()
+  const { sphere, sphereRadius } = useSplineGeometry()
   const sim = useSim()
   const anchor = useRef()
   const head = useRef()
-  const tail = useRef()
+  const ionTail = useRef()
+  const dustTail = useRef()
   const handlers = useSelectable(COMET.name)
 
   const curve = useMemo(() => {
@@ -229,45 +328,54 @@ export function Comet() {
     pts.forEach((p, i) => c.add(new THREE.LineCurve3(p, pts[(i + 1) % pts.length])))
     return c
   }, [])
+  // The track, drawn as a hairline through the Path's own points.
+  const track = useMemo(() => {
+    const pts = SPLINE_PATH_POINTS.map((p) => [...p])
+    return [...pts, pts[0]]
+  }, [])
 
   const tailGeometry = useMemo(() => {
-    // Open cone with its tip at the origin, opening along -Y over one unit.
-    const g = new THREE.ConeGeometry(0.55, 1, 32, 1, true)
-    g.translate(0, -0.5, 0)
+    const g = new THREE.ConeGeometry(0.5, 1, 40, 8, true)
+    g.translate(0, -0.5, 0) // tip at the origin, opening along -Y
     return g
   }, [])
+  const ionMaterial = useMemo(() => tailMaterial('#7fb8ff', 0.9), [])
+  const dustMaterial = useMemo(() => tailMaterial('#fff1d6', 0.85), [])
 
-  const tailTexture = useMemo(() => {
-    const c = document.createElement('canvas')
-    c.width = 4
-    c.height = 128
-    const g = c.getContext('2d')
-    const grad = g.createLinearGradient(0, 0, 0, 128)
-    grad.addColorStop(0, 'rgba(255,255,255,0.9)')
-    grad.addColorStop(1, 'rgba(255,255,255,0)')
-    g.fillStyle = grad
-    g.fillRect(0, 0, 4, 128)
-    const t = new THREE.CanvasTexture(c)
-    t.colorSpace = THREE.SRGBColorSpace
-    return t
-  }, [])
-
-  const tmp = useMemo(() => ({ w: new THREE.Vector3(), dir: new THREE.Vector3(), down: new THREE.Vector3(0, -1, 0) }), [])
+  const tmp = useMemo(
+    () => ({
+      w: new THREE.Vector3(),
+      prev: new THREE.Vector3(),
+      anti: new THREE.Vector3(),
+      vel: new THREE.Vector3(),
+      dust: new THREE.Vector3(),
+      down: new THREE.Vector3(0, -1, 0),
+    }),
+    [],
+  )
 
   useFrame(() => {
     const u = (((sim.time.current / COMET.period) % 1) + 1) % 1
+    // Where the comet was a moment ago gives its direction of travel.
+    anchor.current.position.copy(curve.getPointAt((u + 0.998) % 1))
+    anchor.current.updateWorldMatrix(true, false)
+    anchor.current.getWorldPosition(tmp.prev)
     anchor.current.position.copy(curve.getPointAt(u))
     anchor.current.updateWorldMatrix(true, false)
     anchor.current.getWorldPosition(tmp.w)
     head.current.position.copy(tmp.w)
 
-    // Tail: away from the Sun, longer the closer the comet gets.
     const dist = tmp.w.length()
-    tmp.dir.copy(tmp.w).normalize()
-    tail.current.quaternion.setFromUnitVectors(tmp.down, tmp.dir)
-    const len = THREE.MathUtils.clamp(260 / (dist + 8), 1.2, 14)
-    const width = THREE.MathUtils.clamp(len * 0.18, 0.4, 1.6)
-    tail.current.scale.set(width, len, width)
+    tmp.anti.copy(tmp.w).normalize()
+    tmp.vel.copy(tmp.w).sub(tmp.prev).normalize()
+    const len = THREE.MathUtils.clamp(320 / (dist + 6), 1, 22) // longer near the Sun
+
+    ionTail.current.quaternion.setFromUnitVectors(tmp.down, tmp.anti)
+    ionTail.current.scale.set(len * 0.035, len, len * 0.035)
+
+    tmp.dust.copy(tmp.anti).multiplyScalar(0.7).addScaledVector(tmp.vel, -0.3).normalize()
+    dustTail.current.quaternion.setFromUnitVectors(tmp.down, tmp.dust)
+    dustTail.current.scale.set(len * 0.22, len * 0.75, len * 0.22)
   })
 
   const s = COMET.scale
@@ -275,11 +383,7 @@ export function Comet() {
     <>
       <group position={COMET.offset} rotation={COMET.rotation} scale={s}>
         <group position={COMET.anchor.map((v) => -v)}>
-          {sim.showOrbits && (
-            <mesh geometry={path}>
-              <meshBasicMaterial color="#8fd3ff" transparent opacity={0.35} depthWrite={false} />
-            </mesh>
-          )}
+          {sim.showOrbits && <Line points={track} color="#8fb0e0" transparent opacity={0.22} lineWidth={1} />}
           <object3D ref={anchor} />
         </group>
       </group>
@@ -287,33 +391,15 @@ export function Comet() {
       <group
         ref={(o) => {
           head.current = o
-          sim.register(COMET.name, o, COMET.radius * 3)
+          sim.register(COMET.name, o, COMET.radius * 6)
         }}
       >
         <mesh geometry={sphere} scale={COMET.radius / sphereRadius} {...handlers}>
           <meshBasicMaterial color={COMET.color} toneMapped={false} />
         </mesh>
-        <sprite scale={COMET.radius * 7}>
-          <spriteMaterial
-            map={glowTexture()}
-            color="#9fe0ff"
-            transparent
-            depthWrite={false}
-            blending={THREE.AdditiveBlending}
-            toneMapped={false}
-          />
-        </sprite>
-        <mesh ref={tail} geometry={tailGeometry}>
-          <meshBasicMaterial
-            map={tailTexture}
-            color="#a8e6ff"
-            transparent
-            depthWrite={false}
-            side={THREE.DoubleSide}
-            blending={THREE.AdditiveBlending}
-            toneMapped={false}
-          />
-        </mesh>
+        <Glow scale={COMET.radius * 12} color="#bfe6ff" opacity={0.5} />
+        <mesh ref={ionTail} geometry={tailGeometry} material={ionMaterial} />
+        <mesh ref={dustTail} geometry={tailGeometry} material={dustMaterial} />
       </group>
     </>
   )

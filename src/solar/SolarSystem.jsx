@@ -1,9 +1,11 @@
 import { Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { OrbitControls, Stars } from '@react-three/drei'
+import { OrbitControls, Stars, useProgress } from '@react-three/drei'
+import { EffectComposer, Bloom, ToneMapping } from '@react-three/postprocessing'
+import { ToneMappingMode } from 'postprocessing'
 import * as THREE from 'three'
 import { SimContext, useSim } from './sim.js'
-import { Sun, Planet, OrbitLine, AsteroidBelt, Comet } from './Bodies.jsx'
+import { Sky, Sun, Planet, OrbitLine, AsteroidBelt, Comet } from './Bodies.jsx'
 import { PLANETS, CAMERA_HOME, SECONDS_PER_YEAR } from './data.js'
 import Hud from './Hud.jsx'
 import { Labels, LabelProjector } from './Labels.jsx'
@@ -19,6 +21,17 @@ function Clock() {
     if (!sim.paused.current) sim.time.current += (Math.min(dt, 0.1) * sim.speed.current) / SECONDS_PER_YEAR
   }, -1)
   return null
+}
+
+// Shown while the planet maps download (about 2.4 MB in total).
+function LoadingNote() {
+  const { active, progress } = useProgress()
+  if (!active) return null
+  return (
+    <div className="solar-loading" role="status">
+      Loading planet maps… {Math.round(progress)}%
+    </div>
+  )
 }
 
 // Overview camera position. Portrait screens (phones) back the camera off
@@ -137,11 +150,13 @@ export default function SolarSystem() {
           camera={{ position: CAMERA_HOME.position, fov: CAMERA_HOME.fov, near: 0.1, far: 3000 }}
           onPointerMissed={() => document.body.style.removeProperty('cursor')}
         >
-          <color attach="background" args={['#03040a']} />
-          <ambientLight intensity={0.12} />
-          <Stars radius={600} depth={200} count={6000} factor={6} saturation={0.2} fade speed={0.4} />
+          <color attach="background" args={['#000000']} />
+          {/* Space has almost no fill light: night sides should be close to black. */}
+          <ambientLight intensity={0.025} />
+          <Stars radius={1000} depth={300} count={2500} factor={2.5} saturation={0} fade speed={0} />
           <Clock />
           <Suspense fallback={null}>
+            <Sky />
             <Sun />
             {PLANETS.map((p, i) => (
               <group key={p.name}>
@@ -155,8 +170,14 @@ export default function SolarSystem() {
           <OrbitControls makeDefault enableDamping dampingFactor={0.08} minDistance={2} maxDistance={600} />
           <CameraRig />
           <LabelProjector />
+          {/* Bloom only catches values above 1 (the Sun, the comet), then tone-map. */}
+          <EffectComposer multisampling={4}>
+            <Bloom mipmapBlur luminanceThreshold={1} luminanceSmoothing={0.2} intensity={0.9} radius={0.75} />
+            <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+          </EffectComposer>
         </Canvas>
         <Labels />
+        <LoadingNote />
         <Hud
           time={time}
           selected={selected}

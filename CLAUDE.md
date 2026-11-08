@@ -19,16 +19,19 @@ mounted at a time.
 - `npm run preview`: serve the production build
 
 Stack: React 19, three 0.187, @react-three/fiber 9, @react-three/drei 10, Vite 8.
-There are no image or HDRI downloads: every texture is drawn on a canvas at runtime.
+The solar view loads real planet maps from `public/textures/` (about 2.4 MB;
+sources and licenses are in `CREDITS.md`). The Spline view loads no images.
 
 ## Files
 
 ```
 .
 ├── spline_3_d_starter_file.glb          Original Spline export (source of truth, ~370 KB)
+├── CREDITS.md                           Texture sources and licenses
 ├── public/
 │   ├── spline_3_d_starter_file-transformed.glb   Optimized, Draco-compressed copy the app loads (~43 KB)
-│   └── draco/                           Draco decoder copied from three/examples/jsm/libs/draco/gltf
+│   ├── draco/                           Draco decoder copied from three/examples/jsm/libs/draco/gltf
+│   └── textures/                        Planet maps, rings, Earth layers, Milky Way (see CREDITS.md)
 ├── index.html                           Vite entry, mounts #root
 ├── vite.config.js                       React plugin; dev server host: true, port 5173
 └── src/
@@ -42,13 +45,16 @@ There are no image or HDRI downloads: every texture is drawn on a canvas at runt
     ├── sceneConfig.js                   Spline view tunables: camera, orbit target, background, lights, materials
     │
     └── solar/
-        ├── SolarSystem.jsx              Solar view root: state, context provider, <Canvas>, Clock, CameraRig
-        ├── Bodies.jsx                   Sun, Planet (+Ring, Moon, Satellite), OrbitLine, AsteroidBelt, Comet
+        ├── SolarSystem.jsx              Solar view root: state, context, <Canvas>, Clock, CameraRig, bloom, loading note
+        ├── Bodies.jsx                   Sky, Sun, Planet (+EarthSurface, Ring, Moon, Satellite), OrbitLine, AsteroidBelt, Comet
         ├── Labels.jsx                   DOM name labels + LabelProjector, which positions them every frame
         ├── Hud.jsx                      Overlay UI: title, play/pause, speed, toggles, info card, fly-to bar
         ├── data.js                      All solar tunables and facts: SUN, PLANETS, ASTEROID_BELT, COMET, camera
         ├── sim.js                       SimContext/useSim, useSplineGeometry, orbitAngle, SPIN_SCALE
-        ├── textures.js                  Seeded procedural canvas textures (planets, rings, glow)
+        ├── textureUrls.js               TEXTURES: key -> image URL (the one place image paths live)
+        ├── textures.js                  useMaps(...keys) loader (colour space, anisotropy), glowTexture, rng
+        ├── shaders.js                   Earth night-lights patch, atmosphere rim shader, comet tail shader
+        ├── rocks.js                     makeRock(): roughens the Spline Cube into asteroid shapes
         └── solar.css                    HUD and label styles (responsive below 760px)
 ```
 
@@ -61,33 +67,60 @@ returns its three geometries, plus their native sizes so they can be resized:
 
 | GLB mesh | Becomes |
 | -------- | ------- |
-| **Sphere** | The Sun, all 8 planets, the Moon and the comet head. Scaled by `radius / sphereRadius`. |
-| **Cube** | Earth's satellite (with two box solar panels), and the ~700 instanced rocks of the asteroid belt. Scaled by `size / cubeSize`. |
-| **Path** | The comet's orbit. The tube mesh is drawn as the visible track, and the comet moves along the path's original control points (`SPLINE_PATH_POINTS` in data.js, copied from the GLB's `extras.path`). Corners are sharp (Spline roundness 0), so the curve is a closed `CurvePath` of `LineCurve3` segments, sampled with `getPointAt` for constant speed. |
+| **Sphere** | The Sun, all 8 planets, the Moon, Earth's cloud and atmosphere shells, the comet head and the Milky Way sky (inside-out, radius 1500). Scaled by `radius / sphereRadius`. |
+| **Cube** | Earth's satellite (gold-foil body with two solar wings), and the asteroid belt: `makeRock` rounds the cube partway to a sphere and displaces it with 3D noise, three seeds give three rock shapes, ~1,400 instances in total. |
+| **Path** | The comet's orbit: its original control points (`SPLINE_PATH_POINTS` in data.js, copied from the GLB's `extras.path`) define both the hairline track and the curve the comet follows. Corners are sharp (Spline roundness 0), so the curve is a closed `CurvePath` of `LineCurve3` segments, sampled with `getPointAt` for constant speed. |
+
+### The realistic look
+
+- **Lighting.** A single point light at the Sun (`decay 0`, so the outer
+  planets stay lit) and an ambient light of 0.025, so night sides are nearly
+  black.
+- **Bloom.** `EffectComposer` applies `Bloom` (threshold 1), then ACES
+  `ToneMapping`. Only surfaces brighter than 1 bloom: the Sun (its colour is
+  multiplied by about 2) and the comet head. Lit planets stay below 1.
+- **Earth.** `EarthSurface` layers four things:
+  - a NASA day map with a specular mask, so oceans glint;
+  - city lights through `patchNightLights`, which shows the emissive map only
+    where the surface faces away from the Sun (the Sun is at the origin);
+  - a cloud shell, using `alphaMap`, that turns faster than the ground;
+  - an atmosphere shell: an additive Fresnel rim, lit side only.
+- **Saturn's rings.** The ring texture is a 1D radial strip, so `Ring`
+  rewrites the RingGeometry UVs to "distance from the centre". Radii follow
+  the real C-to-A ring span (1.24 to 2.27 Saturn radii).
+- **Comet.** Two cones with `tailMaterial`, which is soft at the silhouette
+  and fades along the length:
+  - a narrow blue ion tail pointing straight away from the Sun;
+  - a wider dust tail bent back along the direction of travel.
+  Both lengthen as the comet nears the Sun.
+- **Labels and orbits.** Kept quiet: small uppercase text with no pill
+  background, and orbit lines at 10% opacity.
 
 ### Scene graph
 
 ```
 <SimContext.Provider>
 ├── <Canvas camera={CAMERA_HOME}>
-│   ├── background #03040a, ambientLight 0.12, <Stars>
+│   ├── background black, ambientLight 0.025, <Stars> (fine, no twinkle)
 │   ├── <Clock>                          useFrame priority -1: advances sim.time (Earth years)
-│   ├── <Suspense>
-│   │   ├── <Sun>                        Sphere + additive glow sprite + pointLight (decay 0) at the origin
+│   ├── <Suspense>                       suspends until the planet maps load (LoadingNote shows %)
+│   │   ├── <Sky>                        Milky Way panorama on an inside-out Sphere
+│   │   ├── <Sun>                        textured Sphere (HDR colour) + two glow sprites + pointLight (decay 0)
 │   │   ├── per planet:
 │   │   │   ├── <OrbitLine>              drei <Line> circle at planet.distance
 │   │   │   └── <Planet>                 group on the orbit
 │   │   │       ├── group rotation-z = axial tilt
-│   │   │       │   ├── mesh (Sphere)    spins on its axis; procedural texture
+│   │   │       │   ├── spin group       PlanetSurface (map) or EarthSurface (4 layers)
 │   │   │       │   └── <Ring>           Saturn only
 │   │   │       ├── <Moon>               Earth only
 │   │   │       └── <Satellite>          Earth only (the Cube)
-│   │   ├── <AsteroidBelt>               instancedMesh of the Cube; the whole belt turns
-│   │   └── <Comet>                      Path tube + hidden anchor in the path's local frame;
-│   │                                    head and tail drawn in world space (tail points away from the Sun)
+│   │   ├── <AsteroidBelt>               3 instancedMeshes of roughened Cube rocks; the whole belt turns
+│   │   └── <Comet>                      hairline track + hidden anchor in the Path's local frame;
+│   │                                    head, coma and ion/dust tails drawn in world space
 │   ├── <OrbitControls makeDefault>
 │   ├── <CameraRig>                      fly-to / follow selected body; fly home on Overview
-│   └── <LabelProjector>                 projects each body to screen and moves its DOM label
+│   ├── <LabelProjector>                 projects each body to screen and moves its DOM label
+│   └── <EffectComposer>                 Bloom (threshold 1) -> ACES ToneMapping
 ├── <Labels>                             absolutely positioned <span>s over the canvas
 └── <Hud>                                DOM overlay (z-index above labels)
 ```
@@ -211,5 +244,8 @@ npx gltfjsx spline_3_d_starter_file.glb --transform --keepmeshes --keepnames
   numbers where possible.
 - In the solar view, anything that changes every frame goes through refs and
   `useFrame`, never React state.
+- To add an image, add its file to `public/textures/`, add a key to
+  `TEXTURES` in `textureUrls.js` (and to `DATA_TEXTURES` if it is a mask
+  rather than a colour), and credit it in `CREDITS.md`.
 - Assets load from absolute `/...` paths, so anything the app loads goes in
   `public/`.

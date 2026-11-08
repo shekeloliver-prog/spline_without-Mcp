@@ -7,7 +7,7 @@
 
   position: fixed;
   inset: 0;
-  background: #03040a;
+  background: #000;
   color: var(--text);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -94,11 +94,11 @@
 .solar button.ghost { background: transparent; padding: 4px 8px; color: var(--muted); }
 
 .solar-label {
-  color: #dfe6ff;
-  font: 500 12px system-ui, -apple-system, sans-serif;
-  padding: 2px 7px;
-  border-radius: 6px;
-  background: rgba(8, 12, 28, 0.55);
+  color: rgba(225, 232, 255, 0.78);
+  font: 500 11px system-ui, -apple-system, sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
   pointer-events: none;
   user-select: none;
@@ -129,3 +129,18 @@
 
 .solar-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 10; }
 .solar-labels .solar-label { position: absolute; left: 0; top: 0; visibility: hidden; will-change: transform; }
+
+.solar-loading {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 30;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-title .credits { display: block; margin-top: 8px; font-size: 11px; color: var(--muted); }
+.hud-title .credits a { font-size: 11px; color: var(--muted); text-decoration: underline; margin: 0; }

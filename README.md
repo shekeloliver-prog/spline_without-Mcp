@@ -7,6 +7,9 @@ starter file (`spline_3_d_starter_file.glb`):
 - **Cube:** a satellite orbiting Earth, and the rocks of the asteroid belt.
 - **Path:** the orbit of a comet.
 
+The planets wear real NASA-based maps. Earth has clouds, city lights on its
+night side and a thin atmosphere. Credits are in `CREDITS.md`.
+
 The original Spline scene is still there, at `#/spline`.
 
 ```bash

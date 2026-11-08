@@ -12,8 +12,7 @@ export const CAMERA_HOME = { position: [0, 85, 160], target: [0, 0, 0], fov: 45 
 export const SUN = {
   name: 'Sun',
   radius: 7,
-  color: '#ffb547',
-  glowColor: '#ff9a2e',
+  glowColor: '#ffcf8a',
   facts: {
     Type: 'G-type main-sequence star',
     Diameter: '1,392,700 km',
@@ -26,62 +25,55 @@ export const SUN = {
 // distance: orbit radius (scene units). radius: body radius (scene units).
 // period: orbital period in Earth years. day: rotation period in Earth days
 // (negative means it spins backwards). tilt: axial tilt in degrees.
-// texture: name of a procedural texture in textures.js.
+// map: key into TEXTURES (textureUrls.js); real surface/cloud-top maps.
 export const PLANETS = [
   {
-    name: 'Mercury', distance: 14, radius: 0.5, period: 0.241, day: 58.6, tilt: 0.03,
-    texture: 'rocky', colors: ['#8c8580', '#5e5955', '#b3aca6'],
+    name: 'Mercury', map: 'mercury', distance: 14, radius: 0.5, period: 0.241, day: 58.6, tilt: 0.03,
     facts: { Diameter: '4,879 km', 'From the Sun': '0.39 AU', Year: '88 days', Day: '58.6 Earth days' },
     blurb: 'The smallest planet and the closest to the Sun.',
   },
   {
-    name: 'Venus', distance: 19, radius: 0.95, period: 0.615, day: -243, tilt: 177.4,
-    texture: 'banded', colors: ['#e8c88a', '#d4a35f', '#f3dfb0'],
+    name: 'Venus', map: 'venus', distance: 19, radius: 0.95, period: 0.615, day: -243, tilt: 177.4,
     facts: { Diameter: '12,104 km', 'From the Sun': '0.72 AU', Year: '225 days', Day: '243 Earth days (backwards)' },
     blurb: 'The hottest planet: its thick clouds trap heat.',
   },
   {
-    name: 'Earth', distance: 25, radius: 1, period: 1, day: 1, tilt: 23.4,
-    texture: 'earth', colors: ['#1f5fa8', '#3d8a3f', '#e9f1f7'],
+    name: 'Earth', map: 'earth', distance: 25, radius: 1, period: 1, day: 1, tilt: 23.4,
     facts: { Diameter: '12,756 km', 'From the Sun': '1 AU', Year: '365.25 days', Day: '23.9 hours' },
     blurb: 'Home. The only world known to have life.',
     moon: { radius: 0.27, distance: 2.2, period: 0.0748, color: '#bdbab4' },
     satellite: { size: 0.22, distance: 1.55, period: 0.02 },
   },
   {
-    name: 'Mars', distance: 31, radius: 0.7, period: 1.881, day: 1.03, tilt: 25.2,
-    texture: 'rocky', colors: ['#b5532f', '#8a3a1f', '#d9845a'],
+    name: 'Mars', map: 'mars', distance: 31, radius: 0.7, period: 1.881, day: 1.03, tilt: 25.2,
     facts: { Diameter: '6,792 km', 'From the Sun': '1.52 AU', Year: '687 days', Day: '24.6 hours' },
     blurb: 'The red planet: its dust is rich in iron oxide (rust).',
   },
   {
-    name: 'Jupiter', distance: 46, radius: 3, period: 11.86, day: 0.41, tilt: 3.1,
-    texture: 'banded', colors: ['#c9a27e', '#a0714f', '#efe0c8', '#b5653f'],
+    name: 'Jupiter', map: 'jupiter', distance: 46, radius: 3, period: 11.86, day: 0.41, tilt: 3.1,
     facts: { Diameter: '142,984 km', 'From the Sun': '5.2 AU', Year: '11.9 years', Day: '9.9 hours' },
     blurb: 'The largest planet: more than twice the mass of all the others combined.',
   },
   {
-    name: 'Saturn', distance: 62, radius: 2.5, period: 29.46, day: 0.45, tilt: 26.7,
-    texture: 'banded', colors: ['#e3cf9c', '#c4a86c', '#f2e6c4'],
+    name: 'Saturn', map: 'saturn', distance: 62, radius: 2.5, period: 29.46, day: 0.45, tilt: 26.7,
     facts: { Diameter: '120,536 km', 'From the Sun': '9.5 AU', Year: '29.5 years', Day: '10.7 hours' },
     blurb: 'Its rings are made of countless chunks of ice and rock.',
-    ring: { inner: 3.2, outer: 5.6, colors: ['#d8c49a', '#a89070'] },
+    // Real proportions: C ring starts at 1.24 and A ring ends at 2.27 Saturn radii.
+    ring: { inner: 3.1, outer: 5.68 },
   },
   {
-    name: 'Uranus', distance: 76, radius: 1.7, period: 84.01, day: -0.72, tilt: 97.8,
-    texture: 'banded', colors: ['#9fd8e0', '#86c4cf', '#b8e6ec'],
+    name: 'Uranus', map: 'uranus', distance: 76, radius: 1.7, period: 84.01, day: -0.72, tilt: 97.8,
     facts: { Diameter: '51,118 km', 'From the Sun': '19.2 AU', Year: '84 years', Day: '17.2 hours' },
     blurb: 'An ice giant that rolls around the Sun tipped on its side.',
   },
   {
-    name: 'Neptune', distance: 88, radius: 1.65, period: 164.8, day: 0.67, tilt: 28.3,
-    texture: 'banded', colors: ['#3f6fd1', '#2f55a8', '#5d8ae6'],
+    name: 'Neptune', map: 'neptune', distance: 88, radius: 1.65, period: 164.8, day: 0.67, tilt: 28.3,
     facts: { Diameter: '49,528 km', 'From the Sun': '30.1 AU', Year: '165 years', Day: '16.1 hours' },
     blurb: 'The windiest planet, with storms faster than the speed of sound.',
   },
 ]
 
-export const ASTEROID_BELT = { count: 700, inner: 36, outer: 41, thickness: 1.2, size: [0.06, 0.22] }
+export const ASTEROID_BELT = { count: 1400, inner: 36, outer: 41.5, thickness: 1.4, size: [0.04, 0.2] }
 
 // The comet follows the closed Path drawn in Spline. These are the path's
 // control points exactly as stored in spline_3_d_starter_file.glb, in the
@@ -105,8 +97,8 @@ export const COMET = {
   offset: [16, 0, -10], // where the tight end of the loop sits (scene units)
   rotation: [-Math.PI / 2 + 0.22, 0, 0.55], // lays the loop near the ecliptic, slightly tilted
   period: 6, // Earth years per lap
-  radius: 0.3,
-  color: '#cfefff',
+  radius: 0.16,
+  color: '#e8f6ff',
   facts: { Orbit: 'Your Spline path', Shape: 'Long, eccentric loop', Lap: '6 years (here)' },
   blurb: 'Rides the closed path from your Spline file, swinging in close to the Sun and out past Neptune.',
 }
