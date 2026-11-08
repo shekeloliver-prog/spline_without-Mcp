@@ -355,8 +355,14 @@ How it's built:
   body, so each gets its own material while the vertex data stays shared.
 - It lays bodies out from `src/solar/data.js`, using the app's starting
   angles.
-- It works in Spline units (scene units × 100) under a root node scaled by
-  0.01, matching Spline's own export.
+- It writes Spline units directly (scene units × 100; the Sun's radius is
+  700) with **no root scale**. A first version copied Spline's own 0.01 root
+  scale, and the system imported into Spline as a tiny clump.
+- The hierarchy is flattened: every mesh node sits directly under an
+  untransformed "Solar System" root and carries its full world transform.
+  Only the asteroids are grouped, under an untransformed "Asteroid belt"
+  node. Keep it that way, so nothing depends on how an importer handles
+  nested transforms.
 
 What it contains:
 - Textures from `public/textures/`.

@@ -45,7 +45,11 @@ for (const scene of root.listScenes()) scene.dispose()
 for (const node of root.listNodes()) node.dispose()
 for (const cam of root.listCameras()) cam.dispose()
 const scene = doc.createScene('Solar System')
-const top = doc.createNode('Solar System').setScale([0.01, 0.01, 0.01]) // glTF metres, like Spline's own export
+// No scale on the root: the file is in Spline units directly (the Sun's
+// radius is 700, about the size of the starter scene's sphere). An earlier
+// version copied Spline's own 0.01 root scale, and the whole system came in
+// as a tiny clump.
+const top = doc.createNode('Solar System')
 scene.addChild(top)
 
 // ------------------------------------------------------------ helpers
@@ -227,6 +231,37 @@ function makeRock(seed) {
   // The comet sits on the first point of the path, the near-Sun end.
   const cometMat = material('Comet', { color: [0.9, 0.96, 1, 1], rough: 0.6 })
   addNode(inner, 'Comet', { mesh: reuse(sphereMesh, 'Comet', cometMat), scale: (COMET.radius * 2) / COMET.scale / SPHERE_R })
+}
+
+// Flatten: every object carries its full position, rotation and scale itself,
+// directly under the root (which has no transform). Nothing depends on how
+// an importer treats nested groups. Only the asteroids stay inside their
+// "Asteroid belt" group, which also has no transform.
+{
+  const belt = top.listChildren().find((n) => n.getName() === 'Asteroid belt')
+  const meshNodes = []
+  scene.traverse((n) => {
+    if (n.getMesh() && n.getParentNode() !== top && n.getParentNode() !== belt) meshNodes.push(n)
+  })
+  for (const n of meshNodes) {
+    const world = n.getWorldMatrix()
+    n.getParentNode().removeChild(n)
+    n.setMatrix(world)
+    top.addChild(n)
+  }
+  // Remove the now-empty positioning groups.
+  let removed = true
+  while (removed) {
+    removed = false
+    scene.traverse((n) => {
+      if (n !== top && n !== belt && !n.getMesh() && n.listChildren().length === 0) {
+        n.dispose()
+        removed = true
+      }
+    })
+  }
+  // Give the surfaces their planet's plain name ("Earth", not "Earth · surface").
+  for (const n of top.listChildren()) n.setName(n.getName().replace(' · surface', ''))
 }
 
 // Drop meshes/materials left over from the original scene.
