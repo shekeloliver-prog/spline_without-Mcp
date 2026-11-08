@@ -47,9 +47,9 @@ sources and licenses are in `CREDITS.md`). The Spline view loads no images.
     └── solar/
         ├── SolarSystem.jsx              Solar view root: state, context, <Canvas>, Clock, CameraRig, bloom, loading note
         ├── Bodies.jsx                   Sky, Sun, Planet (+EarthSurface, Ring, Moon, Satellite), OrbitLine, AsteroidBelt, Comet
-        ├── Labels.jsx                   DOM name labels + LabelProjector, which positions them every frame
-        ├── Hud.jsx                      Overlay UI: title, play/pause, speed, toggles, info card, fly-to bar
-        ├── data.js                      All solar tunables and facts: SUN, PLANETS, ASTEROID_BELT, COMET, camera
+        ├── Labels.jsx                   LABELS list, DOM labels + LabelProjector (positions, LOD, selected highlight)
+        ├── Hud.jsx                      Overlay UI: play/pause, speed, Options (views, toggles, keys, reset), info card, fly-to bar
+        ├── data.js                      Tunables and facts: SUN, MOON, PLANETS, ASTEROID_BELT, COMET, VIEWS, BODY_LIST, labelDetail
         ├── sim.js                       SimContext/useSim, useSplineGeometry, orbitAngle, SPIN_SCALE
         ├── textureUrls.js               TEXTURES: key -> image URL (the one place image paths live)
         ├── textures.js                  useMaps(...keys) loader (colour space, anisotropy), glowTexture, rng
@@ -127,10 +127,19 @@ returns its three geometries, plus their native sizes so they can be resized:
 
 ### State and the frame loop
 
-- `SolarSystem.jsx` owns UI state (`selected`, `paused`, `speed`,
-  `showLabels`, `showOrbits`). It mirrors anything the frame loop reads into
-  refs (`sim.time`, `sim.speed`, `sim.paused`, `sim.selected`), so the 3D tree
-  doesn't re-render as time passes.
+- `SolarSystem.jsx` owns UI state: `selected`, `view`, `paused`, `speed`, and
+  `options`. The `options` object holds `showLabels`, `labelDetails`,
+  `showOrbits`, `showBelt`, `showSky`, `showGlow` and `autoRotate`, starting
+  from `DEFAULT_OPTIONS`, and is spread into the sim context. Anything the
+  frame loop reads is mirrored into refs (`sim.time`, `sim.speed`,
+  `sim.paused`, `sim.selected`, `sim.view`), so the 3D tree doesn't re-render
+  as time passes.
+- What each option does:
+  - `showBelt` and `showSky` toggle `visible` on the belt and the sky, so
+    nothing remounts.
+  - `showGlow` mounts or unmounts the `EffectComposer`; it restores the
+    renderer's tone mapping when removed.
+  - `autoRotate` is passed to OrbitControls.
 - Every body computes its own position from `sim.time` in `useFrame`, via
   `orbitAngle(t, period, phase)`. Nothing is integrated, so pausing,
   speeding up and slowing down never drift.
@@ -139,8 +148,19 @@ returns its three geometries, plus their native sizes so they can be resized:
 - `sim.select(name)` (HUD buttons, or a click on a body) sets `selected` and
   starts a flight. `CameraRig` moves the target and camera together toward the
   body, dollies to `radius * 5 + 4`, then locks on and follows exactly.
-  `select(null)` flies back to `CAMERA_HOME`. On portrait screens the home
-  position is pushed back by up to 2.4× so the whole system fits.
+  `select(null)` flies back to the current view preset (`VIEWS`: overview,
+  top, side); `setView(name)` switches preset and leaves any followed body.
+  On portrait screens the view position is pushed back by up to 2.4× so the
+  whole system fits.
+- Following a body happens in two steps each frame. First the target and
+  camera move by the body's own displacement since the last frame. Then they
+  ease across the remaining gap. The first step is what keeps fast bodies,
+  such as the Moon (one lap of Earth every 1.5 s at 1×), from drifting out of
+  view.
+- Keyboard (window listener in `SolarSystem.jsx`):
+  - <kbd>Space</kbd> pauses, unless focus is on a button or link.
+  - <kbd>←</kbd> / <kbd>→</kbd> step through `BODY_LIST`.
+  - <kbd>Esc</kbd> returns to the view.
 
 ### Scale and time
 
@@ -161,6 +181,18 @@ the long end swings out past Neptune. To move the orbit, change those four
 values; the comet stays on the drawn track automatically.
 
 ### Labels
+
+What gets a label:
+- Every entry in `BODY_LIST`.
+- The satellite and the asteroid belt. The belt's label rides on an anchor
+  object inside the rotating belt group.
+
+How labels behave:
+- Each label has a name and a detail line (`labelDetail(body)`, e.g.
+  "1 AU · 365.25 days"). The detail line shows only when the "Label details"
+  option is on.
+- Minor labels (Moon, Satellite) appear only within 30 units of the camera.
+- The selected body's label turns the accent colour.
 
 Labels are plain DOM nodes positioned by `LabelProjector`, not drei `<Html>`.
 Each `<Html>` creates its own React root, and under React 19 those roots threw

@@ -6,7 +6,7 @@ import { useSim, useSplineGeometry, orbitAngle, SPIN_SCALE } from './sim.js'
 import { glowTexture, rng, useMaps } from './textures.js'
 import { makeRock } from './rocks.js'
 import { patchNightLights, atmosphereMaterial, tailMaterial } from './shaders.js'
-import { SUN, ASTEROID_BELT, COMET, SPLINE_PATH_POINTS } from './data.js'
+import { SUN, MOON, ASTEROID_BELT, COMET, SPLINE_PATH_POINTS } from './data.js'
 
 const DEG = Math.PI / 180
 
@@ -49,8 +49,9 @@ function Glow({ scale, color, opacity = 1 }) {
 export function Sky() {
   const { sphere, sphereRadius } = useSplineGeometry()
   const { milkyWay } = useMaps('milkyWay')
+  const sim = useSim()
   return (
-    <mesh geometry={sphere} scale={1500 / sphereRadius} rotation={[0.5, 0, 0.35]}>
+    <mesh visible={sim.showSky} geometry={sphere} scale={1500 / sphereRadius} rotation={[0.5, 0, 0.35]}>
       <meshBasicMaterial map={milkyWay} side={THREE.BackSide} color="#c4c8d4" depthWrite={false} toneMapped={false} />
     </mesh>
   )
@@ -210,13 +211,22 @@ function Moon({ moon }) {
   const { moon: map } = useMaps('moon')
   const sim = useSim()
   const ref = useRef()
+  const handlers = useSelectable(MOON.name)
   useFrame(() => {
     const a = orbitAngle(sim.time.current, moon.period)
     ref.current.position.set(Math.cos(a) * moon.distance, Math.sin(a) * 0.15, -Math.sin(a) * moon.distance)
     ref.current.rotation.y = a + Math.PI // tidally locked: same face toward Earth
   })
   return (
-    <mesh ref={ref} geometry={sphere} scale={moon.radius / sphereRadius}>
+    <mesh
+      ref={(o) => {
+        ref.current = o
+        sim.register(MOON.name, o, moon.radius)
+      }}
+      geometry={sphere}
+      scale={moon.radius / sphereRadius}
+      {...handlers}
+    >
       <meshStandardMaterial map={map} roughness={1} />
     </mesh>
   )
@@ -236,7 +246,12 @@ function Satellite({ satellite }) {
     ref.current.rotation.y = a
   })
   return (
-    <group ref={ref}>
+    <group
+      ref={(o) => {
+        ref.current = o
+        sim.register('Satellite', o, s)
+      }}
+    >
       <mesh geometry={cube} scale={s / cubeSize}>
         <meshStandardMaterial color="#c79a3a" metalness={0.7} roughness={0.32} />
       </mesh>
@@ -298,7 +313,12 @@ export function AsteroidBelt() {
   })
 
   return (
-    <group ref={group}>
+    <group ref={group} visible={sim.showBelt}>
+      {/* Anchor for the "Asteroid belt" label, riding along with the rocks */}
+      <object3D
+        position={[0, 0, -(inner + outer) / 2]}
+        ref={(o) => sim.register('Asteroid belt', o, 0.6)}
+      />
       {rocks.map((g, r) => (
         <instancedMesh key={r} ref={(el) => (meshes.current[r] = el)} args={[g, undefined, perRock]}>
           <meshStandardMaterial roughness={1} metalness={0} />

@@ -1,8 +1,18 @@
-import { useEffect, useRef } from 'react'
-import { SUN, PLANETS, COMET } from './data.js'
+import { useEffect, useRef, useState } from 'react'
+import { BODY_LIST, VIEWS } from './data.js'
 
-const BODIES = [SUN, ...PLANETS, COMET]
 const SPEEDS = [0.25, 0.5, 1, 2, 5, 10, 25, 50]
+
+// Display options, in the order they appear in the panel.
+const TOGGLES = [
+  ['showLabels', 'Labels'],
+  ['labelDetails', 'Label details'],
+  ['showOrbits', 'Orbits'],
+  ['showBelt', 'Asteroid belt'],
+  ['showSky', 'Milky Way'],
+  ['showGlow', 'Sun glow'],
+  ['autoRotate', 'Auto-rotate'],
+]
 
 // Elapsed simulated time, written straight to the DOM a few times a second so
 // React doesn't re-render the whole HUD every frame.
@@ -19,14 +29,21 @@ function Elapsed({ time }) {
   return <span ref={ref}>0 days</span>
 }
 
+// The options section starts collapsed on phones, open elsewhere.
+function useStartsOpen() {
+  const [open] = useState(() => !window.matchMedia?.('(max-width: 760px)').matches)
+  return open
+}
+
 export default function Hud(props) {
   const {
-    time, selected, onSelect,
+    time, selected, onSelect, view, onView,
     paused, setPaused, speed, setSpeed,
-    showLabels, setShowLabels, showOrbits, setShowOrbits,
+    options, setOption, onReset,
   } = props
-  const body = BODIES.find((b) => b.name === selected)
+  const body = BODY_LIST.find((b) => b.name === selected)
   const speedIndex = Math.max(0, SPEEDS.indexOf(speed))
+  const startsOpen = useStartsOpen()
 
   return (
     <div className="hud">
@@ -51,11 +68,12 @@ export default function Hud(props) {
             Elapsed: <Elapsed time={time} />
           </span>
         </div>
-        <label className="speed">
+        <label className="speed" htmlFor="speed">
           <span>
             Speed <strong>{speed}×</strong> <small>(1× = 1 year in 20 s)</small>
           </span>
           <input
+            id="speed"
             type="range"
             min={0}
             max={SPEEDS.length - 1}
@@ -64,44 +82,90 @@ export default function Hud(props) {
             onChange={(e) => setSpeed(SPEEDS[+e.target.value])}
           />
         </label>
-        <div className="row toggles">
-          <label>
-            <input type="checkbox" checked={showLabels} onChange={(e) => setShowLabels(e.target.checked)} />
-            Labels
-          </label>
-          <label>
-            <input type="checkbox" checked={showOrbits} onChange={(e) => setShowOrbits(e.target.checked)} />
-            Orbits
-          </label>
-        </div>
+
+        <details className="more" open={startsOpen}>
+          <summary>Options</summary>
+
+          <div className="group">
+            <span className="group-label">View</span>
+            <div className="segmented" role="group" aria-label="Camera view">
+              {Object.entries(VIEWS).map(([key, v]) => (
+                <button
+                  key={key}
+                  className={view === key && !selected ? 'active' : ''}
+                  aria-pressed={view === key && !selected}
+                  onClick={() => onView(key)}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="group">
+            <span className="group-label">Show</span>
+            <div className="toggles">
+              {TOGGLES.map(([key, label]) => (
+                <label key={key} htmlFor={`opt-${key}`}>
+                  <input
+                    id={`opt-${key}`}
+                    type="checkbox"
+                    checked={options[key]}
+                    disabled={key === 'labelDetails' && !options.showLabels}
+                    onChange={(e) => setOption(key, e.target.checked)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="group keys">
+            <span className="group-label">Keys</span>
+            <span>
+              <kbd>Space</kbd> pause · <kbd>←</kbd> <kbd>→</kbd> next body · <kbd>Esc</kbd> back
+            </span>
+          </div>
+
+          <button className="ghost reset" onClick={onReset}>
+            Reset everything
+          </button>
+        </details>
       </section>
 
       {body && (
         <section className="hud-info panel" aria-live="polite">
           <div className="info-head">
-            <h2>{body.name}</h2>
-            <button className="ghost" onClick={() => onSelect(null)} aria-label="Back to overview">
+            <div>
+              <h2>{body.name}</h2>
+              {body.facts.Type && <span className="info-type">{body.facts.Type}</span>}
+            </div>
+            <button className="ghost" onClick={() => onSelect(null)} aria-label="Back to the view">
               ✕
             </button>
           </div>
           <p>{body.blurb}</p>
           <dl>
-            {Object.entries(body.facts).map(([k, v]) => (
-              <div key={k}>
-                <dt>{k}</dt>
-                <dd>{v}</dd>
-              </div>
-            ))}
+            {Object.entries(body.facts)
+              .filter(([k]) => k !== 'Type')
+              .map(([k, v]) => (
+                <div key={k}>
+                  <dt>{k}</dt>
+                  <dd>{v}</dd>
+                </div>
+              ))}
           </dl>
         </section>
       )}
 
       <nav className="hud-bodies panel" aria-label="Fly to">
-        <button className={selected === null ? 'active' : ''} onClick={() => onSelect(null)}>
-          Overview
-        </button>
-        {BODIES.map((b) => (
-          <button key={b.name} className={selected === b.name ? 'active' : ''} onClick={() => onSelect(b.name)}>
+        {BODY_LIST.map((b) => (
+          <button
+            key={b.name}
+            className={selected === b.name ? 'active' : ''}
+            aria-pressed={selected === b.name}
+            onClick={() => onSelect(b.name)}
+          >
             {b.name}
           </button>
         ))}
