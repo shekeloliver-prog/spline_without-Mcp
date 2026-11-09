@@ -62,6 +62,8 @@ sources and licenses are in `CREDITS.md`). The Spline view loads no images.
         ├── rocks.js                     makeRock(): roughens the Spline Cube into asteroid shapes
         ├── orbits.js                    keplerPosition/keplerState/orbitPoints: dwarf-planet ellipses on the stylised scale
         ├── SizeLineup.jsx               "Sizes" view: planets, Moon and Pluto at true relative size beside the Sun
+        ├── Extras.jsx                   Spacecraft (built on the Cube), HabitableZone, EarthPlaces (pins on Earth)
+        ├── skyReport.js                 skyReport(date): Moon phase and which planets are up evening / night / morning
         └── solar.css                    HUD and label styles (responsive below 760px)
 ```
 
@@ -245,6 +247,49 @@ and works with the physics exactly like the asteroid belt.
   worlds get a minimum slot so their labels fit. A Sun edge is drawn at the
   same scale, and the line-up is lit by the real Sun from in front. It is
   only visible in that view. Its labels (`size:*`) show only there.
+
+### Pluto, spacecraft, places on Earth and other additions
+
+- **Pluto.** It has a drawn surface map (`plutoTexture` in textures.js):
+  the heart (Tombaugh Regio / Sputnik Planitia), dark Cthulhu Macula and a
+  pale north cap, all from New Horizons' features. It is an artist's map,
+  not a mosaic. Its moons are Charon, Styx, Nix, Kerberos and Hydra.
+  `realPhases` also sets `phases['Pluto:M0']` from `PLUTO_M_J2000`, and
+  `keplerPosition` takes an optional M0 override.
+- **Spacecraft** (`SPACECRAFT`, `Extras.jsx`): ISS (Earth orbit), James Webb
+  (L2 halo), Parker Solar Probe (Kepler ellipse), New Horizons, Voyager 1 and
+  Voyager 2 (escaping along real ecliptic directions at real speeds, with
+  dashed tracks). Models are built around the Spline Cube. They have fact
+  cards, are in the fly-to bar after a second divider, can be destroyed with
+  the impactor, and the tour ends at New Horizons and Voyager 1. ISS and
+  Webb labels are minor.
+- **Places on Earth** (`PLACES`, `EarthPlaces`):
+  - Pins sit at real latitude and longitude inside Earth's spin group, so
+    they turn with it. On the Spline sphere, (lat, lon) maps to
+    (cos lat·cos lon, sin lat, −cos lat·sin lon), checked against the
+    sphere's UVs and the NASA map.
+  - Labels show only within 7 units and on the side facing the camera.
+  - Selecting a place flies to 1.6 units, looking straight down.
+  - Fact cards carry an "Open in Google Earth" link (`earthUrl`, an
+    earth.google.com/web/@lat,lon,… URL). Earth's own card links to Google
+    Earth too. Google Earth imagery itself isn't embedded; it needs Google's
+    licensing and keys.
+  - The "Places on Earth" option toggles the pins. Sandbox tools aimed at a
+    pin hit Earth.
+- **Today's sky** also restores the system first if the sandbox has
+  disturbed it, switches to the Top view, and opens a panel from
+  `skyReport` with the Moon's phase and the planets in the evening sky, up
+  all night, before dawn, or lost in the Sun's glare.
+  - "Keep in step with the clock" sets `LIVE_SPEED`. While live, `Clock`
+    sets simulated time straight from `Date.now()` through `sim.epoch`, so
+    slow frame rates don't make it fall behind.
+- **Weight calculator** in fact cards: Earth weight × (body gravity ÷ 9.81),
+  using `gravityOf(body)` from the `Gravity` fact (planets, Sun, Moon,
+  dwarfs, large moons). The weight is remembered on the device.
+- **Habitable zone** option: a faint green band from 0.95 to 1.67 AU,
+  through `auToScene`.
+- **Photo mode:** the 📷 button or <kbd>H</kbd> hides the HUD and labels;
+  <kbd>H</kbd>, <kbd>Esc</kbd> or the corner button brings them back.
 
 ### Frame order and the camera
 

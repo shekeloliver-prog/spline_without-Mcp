@@ -8,8 +8,9 @@ import { auToScene } from './data.js'
 const DEG = Math.PI / 180
 
 // Position of a body with orbital elements `o` at time t (years) -> `out`.
-export function keplerPosition(o, t, out) {
-  const M = o.M0 * DEG + (Math.PI * 2 * t) / o.period
+// `M0` (degrees) optionally overrides the starting mean anomaly (Today's sky).
+export function keplerPosition(o, t, out, M0 = o.M0) {
+  const M = M0 * DEG + (Math.PI * 2 * t) / o.period
   // Solve E - e sin E = M (Newton's method, a few steps are plenty).
   let E = M
   for (let k = 0; k < 6; k++) E -= (E - o.e * Math.sin(E) - M) / (1 - o.e * Math.cos(E))

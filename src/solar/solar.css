@@ -305,3 +305,43 @@
 @media (max-width: 760px) {
   .hud-tour, .hud-news { bottom: calc(max(16px, env(safe-area-inset-bottom, 0px)) + 64px); }
 }
+
+/* Second big update: weight calculator, photo mode */
+.weight { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border); display: grid; gap: 6px; }
+.weight label { color: var(--muted); font-size: 12px; }
+.weight-input { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.weight input {
+  width: 6em;
+  font: inherit;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 5px 8px;
+}
+.weight input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.weight-result { margin: 0; }
+.weight-result strong { color: var(--accent); }
+.solar.photo .hud,
+.solar.photo .solar-labels,
+.solar.photo .solar-loading { display: none; }
+.photo-exit {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  opacity: 0.35;
+}
+.photo-exit:hover, .photo-exit:focus-visible { opacity: 1; }
+
+/* Today's sky panel */
+.hud-today h2 { font-size: 16px; }
+.hud-today .sky { margin: 0 0 8px; display: grid; gap: 5px; }
+.hud-today .sky div { display: grid; grid-template-columns: 9.5em 1fr; gap: 8px; border-top: 1px solid var(--panel-border); padding-top: 5px; }
+.hud-today dt { color: var(--muted); }
+.hud-today dd { margin: 0; }
+.hud-today .today-note { color: var(--accent); margin: 0 0 8px; }
+.hud-today .today-small { font-size: 12px; margin: 0 0 10px; }
+@media (max-width: 760px) { .hud-today .sky div { grid-template-columns: 7.5em 1fr; } }
+.earth-link { display: inline-block; margin-top: 10px; color: var(--accent); font-size: 13px; text-decoration: none; }
+.earth-link:hover { text-decoration: underline; }

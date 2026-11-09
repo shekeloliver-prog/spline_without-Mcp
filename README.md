@@ -11,7 +11,9 @@ It also has the major moons of every planet, the dwarf planets (Ceres,
 Pluto with Charon, Haumea, Makemake, Eris) and the Kuiper belt, a guided
 **Tour**, **Today's sky** (planets where they really are now), a **Sizes**
 view at true scale, eclipses, and a sandbox with black holes, wormholes,
-impacts and a supernova.
+impacts and a supernova. Famous places are pinned on Earth with links to
+open them in Google Earth, and real spacecraft (ISS, James Webb, Parker
+Solar Probe, New Horizons, both Voyagers) are on their way.
 
 The planets wear real NASA-based maps. Earth has clouds, city lights on its
 night side and a thin atmosphere. Credits are in `CREDITS.md`.

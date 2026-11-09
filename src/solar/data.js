@@ -26,6 +26,7 @@ export const SUN = {
     Type: 'G-type main-sequence star',
     Diameter: '1,392,700 km',
     'Surface temp.': '≈ 5,500 °C',
+    Gravity: '274 m/s² (at the surface)',
     Age: '≈ 4.6 billion years',
   },
   blurb: 'Holds 99.8% of the solar system’s mass. Everything here orbits it.',
@@ -146,14 +147,14 @@ export const DWARFS = [
     name: 'Ceres', tint: '#8f8a84', shape: 'cratered', km: 939,
     orbit: { a: 2.77, e: 0.0785, i: 10.59, node: 80.3, peri: 73.6, period: 4.6, M0: 40 },
     day: 0.378, tilt: 4,
-    facts: { Type: 'Dwarf planet', Diameter: '939 km', 'From the Sun': '2.8 AU', Year: '4.6 years', Day: '9.1 hours', Discovered: '1801' },
+    facts: { Type: 'Dwarf planet', Diameter: '939 km', 'From the Sun': '2.8 AU', Year: '4.6 years', Day: '9.1 hours', Discovered: '1801', Gravity: '0.28 m/s²' },
     blurb: 'The largest object in the asteroid belt, and the first asteroid ever found.',
   },
   {
-    name: 'Pluto', tint: '#d6bfa2', shape: 'cratered', km: 2377,
+    name: 'Pluto', tint: '#d6bfa2', shape: 'cratered', km: 2377, texture: 'pluto',
     orbit: { a: 39.48, e: 0.2488, i: 17.16, node: 110.3, peri: 113.8, period: 247.9, M0: 54 },
     day: -6.39, tilt: 122.5,
-    facts: { Type: 'Dwarf planet', Diameter: '2,377 km', 'From the Sun': '39.5 AU (average)', Year: '248 years', Day: '6.4 Earth days (backwards)', Discovered: '1930' },
+    facts: { Type: 'Dwarf planet', Diameter: '2,377 km', 'From the Sun': '39.5 AU (average)', Year: '248 years', Day: '6.4 Earth days (backwards)', Discovered: '1930', Gravity: '0.62 m/s²', Moons: '5 (Charon, Nix, Hydra, Kerberos, Styx)' },
     blurb: 'Its oval orbit brings it closer to the Sun than Neptune for 20 years of every 248.',
   },
   {
@@ -174,7 +175,7 @@ export const DWARFS = [
     name: 'Eris', tint: '#ecebe8', shape: 'smooth', km: 2326,
     orbit: { a: 67.8, e: 0.44, i: 44.0, node: 35.9, peri: 151.6, period: 557, M0: 205 },
     day: 15.8, tilt: 0,
-    facts: { Type: 'Dwarf planet', Diameter: '2,326 km', 'From the Sun': '68 AU (average)', Year: '557 years', Day: '15.8 Earth days', Discovered: '2005' },
+    facts: { Type: 'Dwarf planet', Diameter: '2,326 km', 'From the Sun': '68 AU (average)', Year: '557 years', Day: '15.8 Earth days', Discovered: '2005', Gravity: '0.82 m/s²' },
     blurb: 'Almost as big as Pluto: its discovery led to the definition of “dwarf planet”.',
   },
 ]
@@ -240,13 +241,13 @@ const MOON_DATA = {
       blurb: 'The smaller, outer moon of Mars, smoothed by a thick layer of dust.' },
   ],
   Jupiter: [
-    { name: 'Io', km: 3643, distanceKm: 421700, days: 1.769, tint: '#e3cf62', shape: 'cratered',
+    { name: 'Io', g: 1.80, km: 3643, distanceKm: 421700, days: 1.769, tint: '#e3cf62', shape: 'cratered',
       blurb: 'The most volcanically active world in the solar system, squeezed by Jupiter’s tides.' },
-    { name: 'Europa', km: 3122, distanceKm: 671034, days: 3.551, tint: '#e2d6c2', shape: 'smooth',
+    { name: 'Europa', g: 1.31, km: 3122, distanceKm: 671034, days: 3.551, tint: '#e2d6c2', shape: 'smooth',
       blurb: 'An ice shell over a salty ocean: one of the best places to look for life.' },
-    { name: 'Ganymede', km: 5268, distanceKm: 1070412, days: 7.155, tint: '#9c9084', shape: 'cratered',
+    { name: 'Ganymede', g: 1.43, km: 5268, distanceKm: 1070412, days: 7.155, tint: '#9c9084', shape: 'cratered',
       blurb: 'The largest moon in the solar system, bigger than Mercury, with its own magnetic field.' },
-    { name: 'Callisto', km: 4821, distanceKm: 1882709, days: 16.689, tint: '#6e655c', shape: 'cratered',
+    { name: 'Callisto', g: 1.24, km: 4821, distanceKm: 1882709, days: 16.689, tint: '#6e655c', shape: 'cratered',
       blurb: 'The most heavily cratered surface known: almost unchanged for 4 billion years.' },
   ],
   Saturn: [
@@ -260,7 +261,7 @@ const MOON_DATA = {
       blurb: 'Bright ice cliffs streak its trailing side.' },
     { name: 'Rhea', km: 1527, distanceKm: 527108, days: 4.518, tint: '#bdbab4', shape: 'cratered',
       blurb: 'Saturn’s second-largest moon: a cold, cratered ball of ice and rock.' },
-    { name: 'Titan', km: 5150, distanceKm: 1221870, days: 15.945, tint: '#d6a24a', shape: 'smooth',
+    { name: 'Titan', g: 1.35, km: 5150, distanceKm: 1221870, days: 15.945, tint: '#d6a24a', shape: 'smooth',
       blurb: 'The only moon with a thick atmosphere, and lakes of liquid methane on its surface.' },
     { name: 'Iapetus', km: 1469, distanceKm: 3560820, days: 79.32, tint: '#a59d92', shape: 'cratered', incl: 15.5,
       blurb: 'Two-toned: one hemisphere is as dark as coal, the other bright as snow.' },
@@ -278,13 +279,21 @@ const MOON_DATA = {
       blurb: 'The outermost large moon of Uranus, old and heavily cratered.' },
   ],
   Pluto: [
-    { name: 'Charon', km: 1212, distanceKm: 19591, days: 6.387, tint: '#9a958f', shape: 'cratered',
+    { name: 'Charon', g: 0.29, km: 1212, distanceKm: 19591, days: 6.387, tint: '#9a958f', shape: 'cratered',
       blurb: 'Half Pluto’s size: the two are locked face to face, orbiting a point between them.' },
+    { name: 'Styx', km: 16, distanceKm: 42656, days: 20.16, tint: '#9b958e', shape: 'rock',
+      blurb: 'Pluto’s smallest known moon, found by the Hubble Space Telescope in 2012.' },
+    { name: 'Nix', km: 40, distanceKm: 48694, days: 24.85, tint: '#b9b3ab', shape: 'rock',
+      blurb: 'A tumbling, potato-shaped moon about 50 km long.' },
+    { name: 'Kerberos', km: 19, distanceKm: 57783, days: 32.17, tint: '#8a847d', shape: 'rock',
+      blurb: 'Shaped like two lumps stuck together: probably two small bodies that merged.' },
+    { name: 'Hydra', km: 40, distanceKm: 64738, days: 38.2, tint: '#c4beb6', shape: 'rock',
+      blurb: 'Pluto’s outermost moon, coated in bright water ice.' },
   ],
   Neptune: [
     { name: 'Proteus', km: 420, distanceKm: 117647, days: 1.122, tint: '#5f5a56', shape: 'rock',
       blurb: 'About as big as a moon can be without gravity pulling it round.' },
-    { name: 'Triton', km: 2707, distanceKm: 354759, days: -5.877, tint: '#d8c6c0', shape: 'cratered', incl: 157,
+    { name: 'Triton', g: 0.78, km: 2707, distanceKm: 354759, days: -5.877, tint: '#d8c6c0', shape: 'cratered', incl: 157,
       blurb: 'Orbits backwards, so it was probably captured from the Kuiper belt. It has nitrogen geysers.' },
   ],
 }
@@ -322,6 +331,7 @@ export const MOONS = [...PLANETS, ...DWARFS].flatMap((planet) =>
         [`From ${planet.name}`]: `${fmt(m.distanceKm)} km`,
         Orbit: days < 2 ? `${(days * 24).toFixed(1)} hours` : `${days.toFixed(2)} days`,
         ...(m.days < 0 ? { Direction: 'Backwards (retrograde)' } : {}),
+        ...(m.g ? { Gravity: `${m.g} m/s²` } : {}),
       },
     }
   }),
@@ -329,6 +339,7 @@ export const MOONS = [...PLANETS, ...DWARFS].flatMap((planet) =>
 
 // Every selectable body: the fly-to bar (BODY_LIST) plus the other moons.
 export const ALL_BODIES = [...BODY_LIST, ...MOONS]
+// (spacecraft are appended to BODY_LIST and ALL_BODIES below, once defined)
 export const moonsOf = (planetName) => MOONS.filter((m) => m.planet === planetName)
 
 // ---------------------------------------------------------------- today's sky
@@ -378,5 +389,109 @@ export const TOUR = [
   ['Uranus', 'An ice giant tipped on its side, so each pole gets 42 years of sunlight and then 42 years of darkness.'],
   ['Neptune', 'The windiest planet: its storms reach about 2,000 km/h.'],
   ['Pluto', 'A dwarf planet with mountains of water ice and a vast heart-shaped plain of frozen nitrogen.'],
+  ['New Horizons', 'In 2015 this piano-sized probe flew past Pluto and sent back the first close-up pictures of its heart.'],
+  ['Voyager 1', 'Launched in 1977, it is the most distant object humans have ever made, now out in interstellar space.'],
   ['Comet', 'Comets are dirty snowballs. Near the Sun their ice turns to gas, blowing out tails millions of kilometres long.'],
 ]
+
+// Pluto's mean anomaly at J2000 (degrees), so Today's sky can place it too.
+export const PLUTO_M_J2000 = 14.86
+
+// ---------------------------------------------------------------- spacecraft
+// Real missions, built from the Spline Cube. Facts are real; positions are
+// placed on the app's stylised scale.
+//   orbit 'earth': circles Earth (inclination in degrees);
+//   orbit 'l2': the Sun–Earth L2 point beyond Earth, on a small halo loop;
+//   orbit 'kepler': a heliocentric ellipse (elements as for the dwarf planets);
+//   orbit 'escape': heading out of the solar system along an ecliptic
+//     direction (lon/lat, degrees) at `auPerYear`, starting `au` from the Sun.
+export const SPACECRAFT = [
+  {
+    name: 'ISS', kind: 'station', orbit: 'earth', distance: 1.22, incl: 51.6, size: 0.1, tint: '#d9dde4',
+    facts: { Type: 'Space station', Height: 'about 420 km above Earth', Orbit: 'about 92 minutes', Speed: 'about 28,000 km/h', Crewed: 'continuously since November 2000' },
+    blurb: 'A football-field-sized laboratory where astronauts have lived without a break for over 25 years.',
+  },
+  {
+    name: 'James Webb', kind: 'telescope', orbit: 'l2', distance: 2.8, halo: 0.35, size: 0.16, tint: '#d4a23a',
+    facts: { Type: 'Space telescope', Launched: 'December 2021', Location: 'Sun–Earth L2, 1.5 million km from Earth', Mirror: '6.5 m, 18 gold-coated segments' },
+    blurb: 'Sees in infrared, looking back to some of the first galaxies after the Big Bang.',
+  },
+  {
+    name: 'Parker Solar Probe', kind: 'probe', orbit: 'kepler', size: 0.14, tint: '#e8e4dc',
+    elements: { a: 0.388, e: 0.881, i: 3.4, node: 76, peri: 180, period: 0.241, M0: 120 },
+    facts: { Type: 'Solar probe', Launched: 'August 2018', 'Closest to the Sun': '6.1 million km from its surface (2024)', 'Top speed': 'about 690,000 km/h', Orbit: '88 days' },
+    blurb: 'The fastest object ever built, flying through the Sun’s outer atmosphere behind a heat shield.',
+  },
+  {
+    name: 'New Horizons', kind: 'probe', orbit: 'escape', lon: 288, lat: 2, au: 62, auPerYear: 2.9, size: 0.2, tint: '#d8d4cc',
+    facts: { Type: 'Space probe', Launched: 'January 2006', 'From the Sun': 'about 62 AU', Speed: 'about 50,000 km/h', 'Flew past': 'Pluto (2015), Arrokoth (2019)' },
+    blurb: 'Took the first close-up pictures of Pluto, revealing its heart-shaped glacier.',
+  },
+  {
+    name: 'Voyager 2', kind: 'probe', orbit: 'escape', lon: 290, lat: -32, au: 142, auPerYear: 3.25, size: 0.22, tint: '#d8d4cc',
+    facts: { Type: 'Space probe', Launched: 'August 1977', 'From the Sun': 'about 142 AU (21 billion km)', Speed: 'about 55,000 km/h', Status: 'In interstellar space since 2018' },
+    blurb: 'The only spacecraft ever to visit Uranus and Neptune.',
+  },
+  {
+    name: 'Voyager 1', kind: 'probe', orbit: 'escape', lon: 255, lat: 35, au: 170, auPerYear: 3.57, size: 0.22, tint: '#d8d4cc',
+    facts: { Type: 'Space probe', Launched: 'September 1977', 'From the Sun': 'about 170 AU (25 billion km)', Speed: 'about 61,000 km/h', Status: 'In interstellar space since 2012' },
+    blurb: 'The most distant human-made object. Its radio signals take about 23 hours to reach Earth.',
+  },
+]
+for (const c of SPACECRAFT) c.short = c.facts.Type
+
+// ---------------------------------------------------------------- habitable zone
+// Where a planet could keep liquid water on its surface (a common
+// conservative estimate for the Sun), in AU.
+export const HABITABLE_ZONE = { inner: 0.95, outer: 1.67 }
+
+// Surface gravity in m/s² from a body's facts, for the weight calculator.
+export const gravityOf = (body) => {
+  const g = body?.facts?.Gravity
+  return g ? Number(String(g).replace(/[^0-9.]/g, '')) : null
+}
+export const EARTH_G = 9.81
+
+BODY_LIST.splice(BODY_LIST.length - 1, 0, ...SPACECRAFT) // before the comet, after the dwarf planets
+ALL_BODIES.push(...SPACECRAFT)
+
+// ---------------------------------------------------------------- places on Earth
+// Pinned at their real latitude/longitude on the NASA Earth map. Each has an
+// "Open in Google Earth" link to the same spot (view: camera distance in
+// metres). Coordinates: decimal degrees, north and east positive.
+const PLACE_DATA = [
+  ['Mount Everest', 27.9881, 86.925, 'Nepal and China', 'The highest mountain above sea level: 8,849 m.', 25000],
+  ['Dead Sea', 31.559, 35.4732, 'Israel and Jordan', 'The lowest land on Earth, about 430 m below sea level. So salty you float.', 60000],
+  ['Jerusalem', 31.7767, 35.2345, 'Israel', 'One of the oldest cities in the world, holy to Judaism, Christianity and Islam.', 3000],
+  ['Great Pyramid of Giza', 29.9792, 31.1342, 'Egypt', 'Built about 4,500 years ago; the tallest human-made structure for nearly 4,000 years.', 1500],
+  ['Eiffel Tower', 48.8584, 2.2945, 'France', '330 m of wrought iron, finished in 1889.', 1200],
+  ['Great Wall of China', 40.4319, 116.5704, 'China', 'Walls and forts stretching more than 20,000 km in total.', 3000],
+  ['Taj Mahal', 27.1751, 78.0421, 'India', 'A white marble tomb, completed around 1653.', 1500],
+  ['Mount Fuji', 35.3606, 138.7274, 'Japan', 'Japan’s highest peak, 3,776 m: an active volcano.', 30000],
+  ['Sydney Opera House', -33.8568, 151.2153, 'Australia', 'Its sail-shaped roofs opened in 1973.', 1200],
+  ['Great Barrier Reef', -18.2871, 147.6992, 'Australia', 'The largest coral reef system on Earth, visible from space.', 400000],
+  ['Mariana Trench', 11.35, 142.2, 'Pacific Ocean', 'The deepest point of the ocean, Challenger Deep, is about 11 km down.', 600000],
+  ['Grand Canyon', 36.1069, -112.1129, 'USA', 'Carved by the Colorado River, up to 1.8 km deep.', 20000],
+  ['Statue of Liberty', 40.6892, -74.0445, 'USA', 'A gift from France, dedicated in 1886.', 1000],
+  ['Kennedy Space Center', 28.5729, -80.649, 'USA', 'Where the Apollo missions launched for the Moon.', 8000],
+  ['Christ the Redeemer', -22.9519, -43.2105, 'Brazil', 'A 30 m statue on a mountain above Rio de Janeiro.', 1500],
+  ['Amazon rainforest', -3.119, -60.0217, 'Brazil', 'The largest tropical rainforest on Earth.', 400000],
+  ['Machu Picchu', -13.1631, -72.545, 'Peru', 'A 15th-century Inca citadel high in the Andes.', 2000],
+  ['Mount Kilimanjaro', -3.0674, 37.3556, 'Tanzania', 'Africa’s highest mountain: 5,895 m.', 30000],
+  ['Sahara Desert', 23.4162, 25.6628, 'North Africa', 'The largest hot desert, about the size of the United States.', 3000000],
+  ['South Pole', -89.99, 0, 'Antarctica', 'Under about 2.7 km of ice; a research station has stood here since 1956.', 20000],
+]
+const deg = (v, pos, neg) => `${Math.abs(v).toFixed(2)}° ${v >= 0 ? pos : neg}`
+export const PLACES = PLACE_DATA.map(([name, lat, lon, where, blurb, view]) => ({
+  name,
+  lat,
+  lon,
+  place: true,
+  short: where,
+  blurb,
+  earthUrl: `https://earth.google.com/web/@${lat},${lon},0a,${view}d,35y,0h,${view > 100000 ? 0 : 45}t,0r`,
+  facts: { Type: 'Place on Earth', Where: where, Coordinates: `${deg(lat, 'N', 'S')}, ${deg(lon, 'E', 'W')}` },
+}))
+ALL_BODIES.push(...PLACES)
+// Earth itself links to Google Earth too.
+PLANETS.find((p) => p.name === 'Earth').earthUrl = 'https://earth.google.com/web/'

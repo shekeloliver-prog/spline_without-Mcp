@@ -7,12 +7,14 @@ import * as THREE from 'three'
 import { SimContext, useSim, now } from './sim.js'
 import { Sky, Sun, Planet, OrbitLine, AsteroidBelt, Comet, DwarfPlanet, DwarfOrbitLine } from './Bodies.jsx'
 import { SizeLineup } from './SizeLineup.jsx'
+import { Spacecraft, HabitableZone } from './Extras.jsx'
+import { skyReport } from './skyReport.js'
 import { keplerState } from './orbits.js'
 import { ClickPlane, PhysicsStep, LensCapture, BlackHole, WhiteHole, Wormhole, Effects } from './Sandbox.jsx'
 import { createPhysics, resetPhysics, activate } from './physics.js'
 import {
   PLANETS, MOON, MOONS, DWARFS, KUIPER_BELT, CAMERA_HOME, VIEWS, BODY_LIST, SECONDS_PER_YEAR, SANDBOX, SUN, moonsOf,
-  MEAN_LONGITUDE, MOON_MEAN_LONGITUDE, TOUR, TOUR_SECONDS, auToScene,
+  MEAN_LONGITUDE, MOON_MEAN_LONGITUDE, TOUR, TOUR_SECONDS, auToScene, PLUTO_M_J2000, SPACECRAFT,
 } from './data.js'
 import Hud from './Hud.jsx'
 import { Labels, LabelProjector } from './Labels.jsx'
@@ -28,6 +30,10 @@ const DWARF_PHYSICS = DWARFS.map((d) => {
   return { name: d.name, gm: n * n * auToScene(d.orbit.a) ** 3, stateAt: (t, pos, vel) => keplerState(d.orbit, t, pos, vel) }
 })
 
+// Simulation speed at which one simulated second is one real second
+// ("Keep in step with the clock").
+export const LIVE_SPEED = SECONDS_PER_YEAR / (365.25 * 86400)
+
 // Starting angles that put the planets (and the Moon's phase) where they
 // really are on `date`, at simulated time t. Mean longitudes: approximate.
 const DEG = Math.PI / 180
@@ -41,11 +47,16 @@ function realPhases(date, t) {
   }
   const moonPeriod = PLANETS.find((p) => p.moon).moon.period
   phases.Moon = (MOON_MEAN_LONGITUDE[0] + MOON_MEAN_LONGITUDE[1] * days) * DEG - (Math.PI * 2 * t) / moonPeriod
+  // Pluto: its mean anomaly today, wound back to simulated time 0 (degrees).
+  const pluto = DWARFS.find((d) => d.name === 'Pluto').orbit
+  phases['Pluto:M0'] = PLUTO_M_J2000 + (360 * days) / 365.25 / pluto.period - (360 * t) / pluto.period
   return phases
 }
-const TINTS = Object.fromEntries([...PLANETS, MOON, ...MOONS, ...DWARFS].map((b) => [b.name, b.tint]))
+const TINTS = Object.fromEntries([...PLANETS, MOON, ...MOONS, ...DWARFS, ...SPACECRAFT].map((b) => [b.name, b.tint]))
 const RADII = Object.fromEntries(
-  [...PLANETS, { name: 'Moon', radius: PLANETS[2].moon.radius }, ...MOONS, ...DWARFS].map((b) => [b.name, b.radius]),
+  [...PLANETS, { name: 'Moon', radius: PLANETS[2].moon.radius }, ...MOONS, ...DWARFS, ...SPACECRAFT.map((c) => ({ name: c.name, radius: c.size }))].map(
+    (b) => [b.name, b.radius],
+  ),
 )
 
 const DEFAULT_OPTIONS = {
@@ -56,6 +67,8 @@ const DEFAULT_OPTIONS = {
   showSky: true,
   showGlow: true,
   autoRotate: false,
+  showZone: false,
+  showPlaces: true,
 }
 
 let nextId = 1
@@ -65,7 +78,15 @@ const uid = () => nextId++
 function Clock() {
   const sim = useSim()
   useFrame((_, dt) => {
-    if (!sim.paused.current) sim.time.current += (Math.min(dt, 0.1) * sim.speed.current) / SECONDS_PER_YEAR
+    if (sim.paused.current) return
+    const e = sim.epoch.current
+    if (sim.live.current && e) {
+      // In step with the clock: simulated time follows the real date exactly,
+      // however slowly frames arrive.
+      sim.time.current = e.t0 + (Date.now() - e.ms0) / (365.25 * 86400000)
+      return
+    }
+    sim.time.current += (Math.min(dt, 0.1) * sim.speed.current) / SECONDS_PER_YEAR
   }, -1)
   return null
 }
@@ -129,6 +150,7 @@ function CameraRig() {
       eventPos: new THREE.Vector3(),
       eventTarget: new THREE.Vector3(),
       litDir: new THREE.Vector3(),
+      earthPos: new THREE.Vector3(),
       camDir: new THREE.Vector3(),
       following: null,
     }),
@@ -183,14 +205,21 @@ function CameraRig() {
       controls.target.add(v.delta)
       camera.position.add(v.delta)
       if (sim.flying.current) {
-        const want = body.radius * 5 + 4
+        const want = body.place ? 1.6 : body.radius * 5 + 4
         const dist = camera.position.distanceTo(controls.target)
         const next = THREE.MathUtils.lerp(dist, want, k)
         // Swing round to the sunlit side (a three-quarter view, slightly
         // from above), so we never arrive facing a body's black night side.
         v.camDir.copy(camera.position).sub(controls.target).normalize()
         let facing = 1
-        if (v.target.lengthSq() > 1) {
+        const earth = body.place && sim.bodies.current.Earth
+        if (earth) {
+          // A place on Earth: look straight down on it.
+          earth.object.getWorldPosition(v.earthPos)
+          v.litDir.copy(v.target).sub(v.earthPos).normalize()
+          v.camDir.lerp(v.litDir, k).normalize()
+          facing = v.camDir.dot(v.litDir)
+        } else if (v.target.lengthSq() > 1) {
           v.litDir.copy(v.target).negate().normalize().applyAxisAngle(UP, 0.6)
           v.litDir.y += 0.35
           v.litDir.normalize()
@@ -244,9 +273,13 @@ export default function SolarSystem() {
   const [starPhase, setStarPhase] = useState('normal')
   const [resetKey, setResetKey] = useState(0)
   const [todayOn, setTodayOn] = useState(false)
+  const [todayReport, setTodayReport] = useState(null) // what's in the sky; shown in a panel
+  const [todayNote, setTodayNote] = useState(null)
   const [tour, setTour] = useState(null) // { index, playing } while the guided tour runs
+  const [photo, setPhoto] = useState(false) // photo mode: every control hidden
   const phases = useRef({}) // starting angles that override PHASES (today's sky)
   const epoch = useRef(null) // { t0, ms0 }: simulated time t0 is calendar time ms0
+  const live = useRef(false) // keeping in step with the real clock
 
   const time = useRef(0)
   const speedRef = useRef(speed)
@@ -269,6 +302,7 @@ export default function SolarSystem() {
   const pausedBeforeEvent = useRef(false)
   speedRef.current = speed
   pausedRef.current = paused
+  live.current = speed === LIVE_SPEED && !paused
   destroyedRef.current = destroyed
 
   const select = useCallback((name) => {
@@ -288,8 +322,8 @@ export default function SolarSystem() {
     [select],
   )
 
-  const register = useCallback((name, object, radius) => {
-    if (object) bodies.current[name] = { object, radius }
+  const register = useCallback((name, object, radius, meta) => {
+    if (object) bodies.current[name] = { object, radius, ...meta }
   }, [])
 
   const addEffect = useCallback((e) => setEffects((list) => [...list, { id: uid(), start: now(), ...e }]), [])
@@ -410,6 +444,7 @@ export default function SolarSystem() {
   const bodyClick = useCallback(
     (name, point) => {
       if (!armed) return select(name)
+      if (bodies.current[name]?.place) name = 'Earth' // tools aimed at a pin hit Earth itself
       if (armed === 'impactor') {
         if (name !== 'Sun' && name !== 'Comet') launchImpactor(name)
         return
@@ -479,13 +514,27 @@ export default function SolarSystem() {
   // Today's sky: put the planets and the Moon where they really are now, and
   // start showing the calendar date as simulated time runs.
   const showToday = useCallback(() => {
+    // Sandbox tools pull planets off their orbits; put the real system back
+    // first so today's positions actually apply.
+    const disturbed = physics.current.active || destroyedRef.current.size > 0 || star.current.phase !== 'normal'
+    if (disturbed) restore()
     const t = time.current
     const date = new Date()
     phases.current = realPhases(date, t)
     epoch.current = { t0: t, ms0: date.getTime() }
-    setTodayOn(true) // (free-flying planets in the sandbox keep their own paths)
+    setTodayOn(true)
+    setTodayReport(skyReport(date))
+    setTodayNote(disturbed ? 'The sandbox was reset so the planets could return to their real orbits.' : null)
     setPaused(true) // hold on today's layout; Play runs time on from here
-  }, [])
+    setView('top') // the arrangement is easiest to see from above
+  }, [restore, setView])
+
+  // Run the simulation at the speed of real time, from today.
+  const goLive = useCallback(() => {
+    if (!epoch.current) showToday()
+    setSpeed(LIVE_SPEED)
+    setPaused(false)
+  }, [showToday])
 
   // Guided tour: fly from stop to stop, a caption at each.
   const tourStops = useMemo(() => TOUR.filter(([name]) => !destroyed.has(name)), [destroyed])
@@ -525,8 +574,11 @@ export default function SolarSystem() {
         const step = e.key === 'ArrowRight' ? 1 : -1
         const next = i === -1 ? (step > 0 ? 0 : alive.length - 1) : (i + step + alive.length) % alive.length
         select(alive[next].name)
+      } else if (e.key === 'h' || e.key === 'H') {
+        setPhoto((p) => !p)
       } else if (e.key === 'Escape') {
-        if (tour) endTour()
+        if (photo) setPhoto(false)
+        else if (tour) endTour()
         else if (armed) {
           setArmed(null)
           setPendingMouth(null)
@@ -536,7 +588,7 @@ export default function SolarSystem() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [select, armed, endEvent, tour, endTour])
+  }, [select, armed, endEvent, tour, endTour, photo])
 
   const sim = useMemo(
     () => ({
@@ -551,6 +603,7 @@ export default function SolarSystem() {
       labelEls,
       phases,
       epoch,
+      live,
       physics,
       star,
       event,
@@ -574,7 +627,7 @@ export default function SolarSystem() {
     if (import.meta.env.DEV) window.__solar = sim
   }, [sim])
 
-  const solarClass = ['solar', armed ? 'armed' : '', eventType ? 'in-event' : ''].join(' ')
+  const solarClass = ['solar', armed ? 'armed' : '', eventType ? 'in-event' : '', photo ? 'photo' : ''].join(' ')
 
   return (
     <SimContext.Provider value={sim}>
@@ -609,6 +662,10 @@ export default function SolarSystem() {
             ))}
             <Comet />
             <SizeLineup />
+            <HabitableZone />
+            {SPACECRAFT.map((c) => (
+              <Spacecraft key={c.name} craft={c} />
+            ))}
             <LensCapture lenses={lenses} />
             {tools.map((t) =>
               t.type === 'blackhole' ? (
@@ -645,6 +702,11 @@ export default function SolarSystem() {
         </Canvas>
         <Labels />
         <LoadingNote />
+        {photo && (
+          <button className="photo-exit" onClick={() => setPhoto(false)}>
+            Show controls (H)
+          </button>
+        )}
         <Hud
           time={time}
           selected={selected}
@@ -657,7 +719,17 @@ export default function SolarSystem() {
             setTour(null)
             setView(name)
           }}
-          today={{ on: todayOn, show: showToday, epoch }}
+          today={{
+            on: todayOn,
+            show: showToday,
+            epoch,
+            report: todayReport,
+            note: todayNote,
+            close: () => setTodayReport(null),
+            live: speed === LIVE_SPEED && !paused,
+            goLive,
+          }}
+          onPhoto={() => setPhoto(true)}
           tour={tour && { ...tour, stops: tourStops }}
           tourControls={{
             start: startTour,

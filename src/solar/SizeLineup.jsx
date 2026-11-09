@@ -6,7 +6,7 @@ import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSim, useSplineGeometry } from './sim.js'
-import { useMaps } from './textures.js'
+import { useMaps, plutoTexture } from './textures.js'
 import { Ring } from './Bodies.jsx'
 import { PLANETS, SIZE_LINEUP } from './data.js'
 
@@ -21,11 +21,11 @@ function LineupBody({ name, radius, x }) {
   const material = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        map: key ? maps[key] : maps.moon,
-        color: key ? '#ffffff' : '#d6bfa2', // Pluto: the lunar map tinted tan
+        map: key ? maps[key] : name === 'Pluto' ? plutoTexture() : maps.moon,
+        color: '#ffffff',
         roughness: 0.95,
       }),
-    [key, maps],
+    [key, maps, name],
   )
   const [cx, cy, cz] = SIZE_LINEUP.center
   return (

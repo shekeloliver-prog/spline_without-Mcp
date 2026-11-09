@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { BODY_LIST, ALL_BODIES, VIEWS } from './data.js'
+import { BODY_LIST, ALL_BODIES, VIEWS, gravityOf, EARTH_G } from './data.js'
 
 const SPEEDS = [0.25, 0.5, 1, 2, 5, 10, 25, 50]
 
@@ -12,27 +12,81 @@ const TOGGLES = [
   ['showSky', 'Milky Way'],
   ['showGlow', 'Sun glow'],
   ['autoRotate', 'Auto-rotate'],
+  ['showZone', 'Habitable zone'],
+  ['showPlaces', 'Places on Earth'],
 ]
 
 // Elapsed simulated time, written straight to the DOM a few times a second so
 // React doesn't re-render the whole HUD every frame. Once "Today's sky" has
 // set a calendar epoch, it shows the simulated date instead.
 const DATE_FORMAT = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-function Elapsed({ time, epoch }) {
+const LIVE_FORMAT = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const LONG_DATE = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+function Elapsed({ time, epoch, live }) {
   const ref = useRef()
   useEffect(() => {
     const id = setInterval(() => {
       const years = time.current
       const e = epoch?.current
       ref.current.textContent = e
-        ? DATE_FORMAT.format(new Date(e.ms0 + (years - e.t0) * 365.25 * 86400000))
+        ? (live ? LIVE_FORMAT : DATE_FORMAT).format(new Date(e.ms0 + (years - e.t0) * 365.25 * 86400000))
         : years < 1
           ? `${Math.floor(years * 365.25)} days`
           : `${years.toFixed(1)} years`
     }, 150)
     return () => clearInterval(id)
-  }, [time, epoch])
+  }, [time, epoch, live])
   return <span ref={ref}>0 days</span>
+}
+
+// What Today's sky found: the date, the Moon's phase, and which planets are
+// up this evening, all night or before dawn.
+const WHEN = [
+  ['evening', 'Evening sky'],
+  ['all night', 'All night'],
+  ['morning', 'Before dawn'],
+  ['hidden', 'Too close to the Sun'],
+]
+function TodayPanel({ today }) {
+  const r = today.report
+  const named = (p) => (p.how ? `${p.name} (${p.how})` : p.name)
+  return (
+    <section className="hud-tour hud-today panel" aria-live="polite">
+      <div className="tour-head">
+        <span className="tour-step">Today’s sky</span>
+        <button className="ghost" onClick={today.close} aria-label="Close">
+          ✕
+        </button>
+      </div>
+      <h2>{LONG_DATE.format(r.date)}</h2>
+      {today.note && <p className="today-note">{today.note}</p>}
+      <dl className="sky">
+        <div>
+          <dt>Moon</dt>
+          <dd>
+            {r.moon.phase} · {r.moon.lit}% lit
+          </dd>
+        </div>
+        {WHEN.map(([key, label]) => {
+          const list = r.planets.filter((p) => p.when === key)
+          return list.length ? (
+            <div key={key}>
+              <dt>{label}</dt>
+              <dd>{list.map(named).join(', ')}</dd>
+            </div>
+          ) : null
+        })}
+      </dl>
+      <p className="today-small">
+        The planets and the Moon are now where they really are (approximately: average orbits). Seen from above.
+      </p>
+      <div className="tour-buttons">
+        <button className={today.live ? 'active' : ''} onClick={today.goLive} disabled={today.live}>
+          {today.live ? '● In step with the clock' : '▶ Keep in step with the clock'}
+        </button>
+      </div>
+    </section>
+  )
 }
 
 // The guided tour's caption, above the fly-to bar.
@@ -69,8 +123,48 @@ function TourPanel({ tour, controls }) {
   )
 }
 
+// "How much would I weigh there?" Your Earth weight is remembered on this
+// device; the answer scales it by the body's surface gravity.
+const WEIGHT_KEY = 'solar-weight-kg'
+function WeightCalculator({ body }) {
+  const g = gravityOf(body)
+  const [kg, setKg] = useState(() => {
+    try {
+      return localStorage.getItem(WEIGHT_KEY) ?? ''
+    } catch {
+      return ''
+    }
+  })
+  if (!g) return null
+  const update = (value) => {
+    setKg(value)
+    try {
+      localStorage.setItem(WEIGHT_KEY, value)
+    } catch {
+      // storage blocked: fine, it just isn't remembered
+    }
+  }
+  const n = Number(kg)
+  const there = n > 0 ? (n * g) / EARTH_G : null
+  const where = body.name === 'Sun' ? 'If you could stand on the Sun' : `On ${body.name}`
+  return (
+    <div className="weight">
+      <label htmlFor="weight-kg">Your weight on Earth</label>
+      <span className="weight-input">
+        <input id="weight-kg" type="number" inputMode="decimal" min="1" max="500" placeholder="e.g. 40" value={kg} onChange={(e) => update(e.target.value)} />
+        kg
+      </span>
+      {there !== null && (
+        <p className="weight-result">
+          {where} you’d weigh <strong>{there < 10 ? there.toFixed(1) : Math.round(there).toLocaleString('en-US')} kg</strong>
+        </p>
+      )}
+    </div>
+  )
+}
+
 // One-time note about what's new; closing it is remembered on this device.
-const NEWS_KEY = 'solar-news-dismissed-v1'
+const NEWS_KEY = 'solar-news-dismissed-v3'
 function WhatsNew() {
   const [open, setOpen] = useState(() => {
     try {
@@ -97,8 +191,9 @@ function WhatsNew() {
         </button>
       </div>
       <p>
-        Dwarf planets and the Kuiper belt, a guided <b>Tour</b>, <b>Today’s sky</b> (real planet positions), and a{' '}
-        <b>Sizes</b> view comparing worlds at true scale.
+        <b>Places on Earth</b> with Google Earth links, a better <b>Today’s sky</b> (what’s up tonight, real-time
+        clock), <b>spacecraft</b> (ISS, Webb, Parker, Voyagers, New Horizons), a mapped <b>Pluto</b> with all five
+        moons, a <b>weight calculator</b>, the <b>Habitable zone</b>, and <b>photo mode</b> (press H).
       </p>
     </aside>
   )
@@ -220,7 +315,7 @@ export default function Hud(props) {
     time, selected, onSelect, view, onView,
     paused, setPaused, speed, setSpeed,
     options, setOption, onReset, sandbox,
-    today, tour, tourControls,
+    today, tour, tourControls, onPhoto,
   } = props
   const body = ALL_BODIES.find((b) => b.name === selected)
   const speedIndex = Math.max(0, SPEEDS.indexOf(speed))
@@ -257,14 +352,17 @@ export default function Hud(props) {
           <button onClick={tour ? tourControls.end : tourControls.start} disabled={!!sandbox.eventType}>
             {tour ? 'End tour' : '✦ Tour'}
           </button>
+          <button onClick={onPhoto} title="Hide every control (H)" aria-label="Photo mode">
+            📷
+          </button>
           <span className="elapsed">
             {today.on ? 'Date: ' : 'Elapsed: '}
-            <Elapsed time={time} epoch={today.epoch} />
+            <Elapsed time={time} epoch={today.epoch} live={today.live} />
           </span>
         </div>
         <label className="speed" htmlFor="speed">
           <span>
-            Speed <strong>{speed}×</strong> <small>(1× = 1 year in 20 s)</small>
+            Speed <strong>{speed < 0.01 ? 'real time' : `${speed}×`}</strong> <small>(1× = 1 year in 20 s)</small>
           </span>
           <input
             id="speed"
@@ -301,9 +399,14 @@ export default function Hud(props) {
             <button className={today.on ? 'active' : ''} onClick={today.show} title="Approximate: mean orbits">
               {today.on ? '✓ Today’s sky (tap to refresh)' : 'Today’s sky'}
             </button>
+            {today.on && !today.report && (
+              <button onClick={today.goLive} disabled={today.live}>
+                {today.live ? '● In step with the clock' : 'Keep in step with the clock'}
+              </button>
+            )}
             <small className="note">
-              Moves the planets and the Moon’s phase to where they are right now (approximately), and pauses. Press
-              Play to run time on from today.
+              Moves the planets, Pluto and the Moon’s phase to where they are right now (approximately), shows what’s in
+              tonight’s sky, and pauses. Press Play to run time on, or keep in step with the clock.
             </small>
           </div>
 
@@ -362,15 +465,23 @@ export default function Hud(props) {
                 </div>
               ))}
           </dl>
+          {body.earthUrl && (
+            <a className="earth-link" href={body.earthUrl} target="_blank" rel="noopener noreferrer">
+              {body.place ? 'Open this place in Google Earth ↗' : 'Explore Earth in Google Earth ↗'}
+            </a>
+          )}
+          <WeightCalculator body={body} />
         </section>
       )}
 
       {tour && <TourPanel tour={tour} controls={tourControls} />}
-      {!tour && <WhatsNew />}
+      {!tour && today.report && <TodayPanel today={today} />}
+      {!tour && !today.report && <WhatsNew />}
 
       <nav className="hud-bodies panel" aria-label="Fly to">
         {BODY_LIST.map((b) => [
           b.name === 'Ceres' && <span key="dwarf-divider" className="divider" title="Dwarf planets" aria-hidden="true" />,
+          b.name === 'ISS' && <span key="craft-divider" className="divider" title="Spacecraft" aria-hidden="true" />,
           <button
             key={b.name}
             className={selected === b.name ? 'active' : ''}

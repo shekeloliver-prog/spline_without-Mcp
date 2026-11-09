@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 import { NodeIO } from '@gltf-transform/core'
 import * as THREE from 'three'
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { SUN, PLANETS, ASTEROID_BELT, COMET, DWARFS, KUIPER_BELT, moonsOf } from '../src/solar/data.js'
+import { SUN, PLANETS, ASTEROID_BELT, COMET, DWARFS, KUIPER_BELT, SPACECRAFT, auToScene, moonsOf } from '../src/solar/data.js'
 import { keplerPosition, orbitPoints } from '../src/solar/orbits.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -28,6 +28,7 @@ const TEX = join(ROOT, 'public/textures')
 const U = 100 // Spline units per scene unit (the original export scales by 0.01)
 
 // Same starting angles as the web app, so the layout matches its first frame.
+// (PHASES is used again by the spacecraft section to find Earth.)
 const PHASES = PLANETS.map((_, i) => (i * 2.39996) % (Math.PI * 2))
 
 const io = new NodeIO()
@@ -283,6 +284,34 @@ for (const d of DWARFS) {
       rot: quat(random() * 6, random() * 6, random() * 6),
       scale: [k, k * (0.7 + random() * 0.6), k * (0.8 + random() * 0.4)],
     })
+  }
+}
+
+// ------------------------------------------------------------ spacecraft
+// Simple stand-ins (the Spline Cube in gold foil plus a white dish), placed
+// where the app shows them on its first frame. Small, so look for their names.
+{
+  const earthIndex = PLANETS.findIndex((p) => p.name === 'Earth')
+  const ea = PHASES[earthIndex]
+  const earth = new THREE.Vector3(Math.cos(ea), 0, -Math.sin(ea)).multiplyScalar(PLANETS[earthIndex].distance)
+  const foil = material('Spacecraft foil', { color: [0.78, 0.6, 0.23, 1], rough: 0.32, metal: 0.7 })
+  const white = material('Spacecraft dish', { color: [0.94, 0.93, 0.9, 1], rough: 0.6, double: true })
+  const dish = meshFrom(new THREE.ConeGeometry(0.85, 0.35, 32, 1, true).rotateX(Math.PI), 'Dish', white)
+  for (const c of SPACECRAFT) {
+    const pos = new THREE.Vector3()
+    if (c.orbit === 'earth') pos.copy(earth).add(new THREE.Vector3(c.distance, 0, 0))
+    else if (c.orbit === 'l2') pos.copy(earth).addScaledVector(earth.clone().normalize(), c.distance)
+    else if (c.orbit === 'kepler') keplerPosition(c.elements, 0, pos)
+    else {
+      const l = (c.lon * Math.PI) / 180
+      const b = (c.lat * Math.PI) / 180
+      pos.set(Math.cos(b) * Math.cos(l), Math.sin(b), -Math.cos(b) * Math.sin(l)).multiplyScalar(auToScene(c.au))
+    }
+    // Enlarged ×3 so they can be found in Spline at all.
+    const s = c.size * 3 * U
+    const craft = addNode(top, c.name, { pos: pos.multiplyScalar(U).toArray() })
+    addNode(craft, `${c.name} · body`, { mesh: reuse(cubeMesh, `${c.name} body`, foil), scale: (s * 0.7) / CUBE_SIZE })
+    addNode(craft, `${c.name} · dish`, { mesh: dish, pos: [0, s * 0.5, 0], scale: s })
   }
 }
 

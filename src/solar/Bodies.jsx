@@ -3,11 +3,12 @@ import { useFrame } from '@react-three/fiber'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSim, useSplineGeometry, orbitAngle, SPIN_SCALE, now, MOVE_PRIORITY } from './sim.js'
-import { glowTexture, rng, useMaps } from './textures.js'
+import { glowTexture, rng, useMaps, plutoTexture } from './textures.js'
 import { makeRock } from './rocks.js'
 import { patchSurface, atmosphereMaterial, tailMaterial, coronaTexture } from './shaders.js'
 import { SUN, MOON, ASTEROID_BELT, COMET, SPLINE_PATH_POINTS, SANDBOX, moonsOf } from './data.js'
 import { keplerPosition, orbitPoints } from './orbits.js'
+import { EarthPlaces } from './Extras.jsx'
 import { accel, interact, shellRadius } from './physics.js'
 
 const DEG = Math.PI / 180
@@ -181,7 +182,7 @@ function PlanetSurface({ planet, scale }) {
 // mask, city lights on the night side, a moving cloud layer and a thin
 // blue atmosphere at the limb.
 function EarthSurface({ scale }) {
-  const { sphere } = useSplineGeometry()
+  const { sphere, sphereRadius } = useSplineGeometry()
   const sim = useSim()
   const clouds = useRef()
   const moonPos = useMemo(() => new THREE.Vector3(), [])
@@ -220,6 +221,7 @@ function EarthSurface({ scale }) {
         <meshStandardMaterial color="#ffffff" alphaMap={maps.earthClouds} transparent depthWrite={false} roughness={1} />
       </mesh>
       <mesh geometry={sphere} scale={scale * 1.035} material={atmosphere} />
+      <EarthPlaces radius={scale * sphereRadius} />
     </>
   )
 }
@@ -674,8 +676,8 @@ export function DwarfPlanet({ dwarf }) {
   const material = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: dwarf.tint,
-        map: dwarf.shape === 'cratered' ? lunarMap : null,
+        color: dwarf.texture === 'pluto' ? '#ffffff' : dwarf.tint,
+        map: dwarf.texture === 'pluto' ? plutoTexture() : dwarf.shape === 'cratered' ? lunarMap : null,
         roughness: dwarf.shape === 'smooth' ? 0.75 : 1,
       }),
     [dwarf, lunarMap],
@@ -687,7 +689,7 @@ export function DwarfPlanet({ dwarf }) {
     const t = sim.time.current
     const body = sim.physics.current.bodies[dwarf.name]
     if (body?.free) holder.current.position.copy(body.pos)
-    else keplerPosition(dwarf.orbit, t, holder.current.position)
+    else keplerPosition(dwarf.orbit, t, holder.current.position, sim.phases.current[`${dwarf.name}:M0`])
     holder.current.visible = body ? body.alive : true
     spin.current.rotation.y = (Math.PI * 2 * t * 365.25 * SPIN_SCALE) / dwarf.day
   }, MOVE_PRIORITY)
